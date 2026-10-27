@@ -16,7 +16,7 @@ https://raw.githubusercontent.com/Anybody4506/mediaVault-Revenge/main/dist/Media
 
 - **Save from any message.** Long-press a message: each of its media gets an "Add to MediaVault" / "Remove from MediaVault" row, plus "Add all media" and "Open MediaVault". This replaces the desktop star and the right-click menu.
 - **Tabs in Discord's GIF/emoji picker.** Images, Videos, Audio and Files sit next to Emoji, GIF and Sticker and show the MediaVault grid (search, folders, long-press options). Can be turned off in the settings.
-- **Library sheet**, opened with the button next to the emoji button in the chat bar, the `/mediavault` command, the message long-press sheet, or the plugin settings. Tabs for GIF, Images, Videos, Audio and Files (each can be hidden), search, pages and folders.
+- **Library sheet**, opened with the Images and Videos buttons in the chat bar (Audio and Files can be added in the settings), the `/mediavault` command, the message long-press sheet, or the plugin settings. Tabs for GIF, Images, Videos, Audio and Files (each can be hidden), search, pages and folders.
 - **Folders and subfolders** with colors and thumbnails. Long-press a folder to create a subfolder, rename it, change its color, reorder it, move it, set its thumbnail or delete it.
 - **Media options.** Long-press a media to send it, rename it, move it to a folder, use it as the folder thumbnail, copy its link, message link or source link, or remove it.
 - **Discord's favorite GIFs.** The GIF tab shows Discord's own favorites, synced across devices, and adding a GIF also stars it in Discord (can be turned off).

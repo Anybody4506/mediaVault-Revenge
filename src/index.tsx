@@ -5,9 +5,10 @@
 
 import * as React from "react";
 import { patchChatInput, registerCommand } from "./chatButton";
-import { recordActionSheets, recordPortalKeyboard } from "./diagnostic";
+import { setDiagnostic } from "./diagnostic";
 import { patchMessageActionSheet } from "./message";
 import { patchExpressionPicker } from "./picker";
+import { settings } from "./settings";
 import SettingsPage from "./settingsPage";
 import { resetLibraryCache } from "./store";
 import { resetUrlQueue } from "./urls";
@@ -28,8 +29,10 @@ export default {
         attempt("Chat bar button", patchChatInput);
         attempt("GIF/emoji picker tabs", patchExpressionPicker);
         attempt("/mediavault command", registerCommand);
-        attempt("Diagnostic", recordActionSheets);
-        attempt("Portal keyboard diagnostic", recordPortalKeyboard);
+        attempt("Diagnostic", () => {
+            setDiagnostic(settings().diagnostic);
+            return () => setDiagnostic(false);
+        });
     },
 
     onUnload() {

@@ -148,6 +148,19 @@ function segmentedModules() {
     return found;
 }
 
+let stopRecording: (() => void) | null = null;
+
+/** Starts or stops recording what "Copy diagnostic" reports (it patches Discord, so it is off unless asked for). */
+export function setDiagnostic(enabled: boolean) {
+    if (enabled && !stopRecording) {
+        const stops = [recordActionSheets(), recordPortalKeyboard()];
+        stopRecording = () => stops.forEach(stop => stop());
+    } else if (!enabled && stopRecording) {
+        stopRecording();
+        stopRecording = null;
+    }
+}
+
 export function collectDiagnostic(): string {
     if (!pickerTree.length) capturePicker();
     const names = new Set<string>();

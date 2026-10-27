@@ -8,10 +8,12 @@ import type { FC, ReactElement, ReactNode } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
 import { currentAccountId } from "./discord";
+import type { Key } from "./i18n";
 import { t } from "./i18n";
-import { openLibrary } from "./library";
+import { KIND_ICONS, openLibrary } from "./library";
+import type { MediaKind } from "./model";
 import { findInReactTree, patcher } from "./rv";
-import { settings } from "./settings";
+import { CHAT_BUTTON_SETTINGS, settings } from "./settings";
 import { icon } from "./ui";
 
 interface ChatInputActionButtonProps {
@@ -30,7 +32,8 @@ export const chatButtonHost: { current: any; } = { current: null };
 export const chatButtonStatus = { rightActionsFound: false, tries: 0, rendered: 0, actionButtonFound: false, insertedInto: false, siblings: [] as string[] };
 
 /**
- * Replaces the desktop chat bar buttons: one button, next to the emoji button, that opens the library.
+ * The desktop chat bar buttons: one per media kind (images and videos by default), next to the emoji button,
+ * each opening the library on its tab.
  * Discord loads the chat bar lazily, so the lookup is retried for a while after startup.
  */
 export function patchChatInput(): () => void {
@@ -54,8 +57,9 @@ export function patchChatInput(): () => void {
     };
 }
 
-// Same element every render, so it can be found again in cached trees.
-const button = <MediaVaultButton key="mediavault" />;
+// Same elements every render, so they can be found again in cached trees.
+const buttons = (Object.keys(CHAT_BUTTON_SETTINGS) as (keyof typeof CHAT_BUTTON_SETTINGS)[])
+    .map(kind => ({ kind, element: <MediaVaultButton key={`mediavault-${kind}`} kind={kind} /> }));
 
 function insertButton(tree: ReactElement) {
     chatButtonStatus.rendered++;
@@ -64,27 +68,31 @@ function insertButton(tree: ReactElement) {
     chatButtonStatus.insertedInto = true;
     const { children } = node.props;
     if (!chatButtonStatus.siblings.length) describeChildren(children);
-    const index = children.indexOf(button);
-    if (index !== -1) children.splice(index, 1);
-    if (settings().chatButton) children.unshift(button);
+    for (const { element } of buttons) {
+        const index = children.indexOf(element);
+        if (index !== -1) children.splice(index, 1);
+    }
+    const current = settings();
+    children.unshift(...buttons.filter(({ kind }) => current[CHAT_BUTTON_SETTINGS[kind]]).map(({ element }) => element));
     return tree;
 }
 
-function MediaVaultButton() {
+function MediaVaultButton({ kind }: { kind: MediaKind; }) {
     const ChatInputActionButton = findActionButton();
-    const Icon = icon("StarIcon", "FolderIcon", "ImageIcon");
+    const Icon = icon(...KIND_ICONS[kind]);
     chatButtonStatus.actionButtonFound = !!ChatInputActionButton;
-    const onPress = () => openLibrary(currentAccountId());
-    if (ChatInputActionButton && Icon) return <ChatInputActionButton accessibilityLabel={t("m.open")} IconComponent={Icon} onPress={onPress} />;
+    const label = `MediaVault: ${t(`tab.${kind}` as Key)}`;
+    const onPress = () => openLibrary(currentAccountId(), kind);
+    if (ChatInputActionButton && Icon) return <ChatInputActionButton accessibilityLabel={label} IconComponent={Icon} onPress={onPress} />;
     // Recent Discord versions no longer export ChatInputActionButton: draw a round button the size of the others.
-    return <Pressable accessibilityRole="button" accessibilityLabel={t("m.open")} onPress={onPress} hitSlop={6} style={styles.button} ref={(view: unknown) => { chatButtonHost.current = view; }}>
-        {Icon ? <Icon size="md" /> : <Text style={styles.star}>★</Text>}
+    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={4} style={styles.button} ref={(view: unknown) => { chatButtonHost.current = view; }}>
+        {Icon ? <Icon size="md" /> : <Text style={styles.fallback}>{kind === "video" ? "▶" : "▣"}</Text>}
     </Pressable>;
 }
 
 const styles = StyleSheet.create({
-    button: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-    star: { fontSize: 22, color: "#b5bac1" }
+    button: { width: 36, height: 40, alignItems: "center", justifyContent: "center" },
+    fallback: { fontSize: 20, color: "#b5bac1" }
 });
 
 /** Describes the chat bar's buttons, so the diagnostic shows what the MediaVault button sits next to. */

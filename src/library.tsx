@@ -81,10 +81,12 @@ export interface LibraryBrowserProps {
     /** Called once a media was sent or inserted in the chat box. */
     onSent(): void;
     header?: React.ReactNode;
+    /** Denser layout for the GIF/emoji picker tabs: 4 columns, no hint. */
+    compact?: boolean;
 }
 
 /** Search, folders and the media grid of one tab: the body of the library sheet, and of the GIF/emoji picker tabs. */
-export function LibraryBrowser({ accountId, kind, onSent, header }: LibraryBrowserProps) {
+export function LibraryBrowser({ accountId, kind, onSent, header, compact }: LibraryBrowserProps) {
     const settings = useSettings();
     const { Button, Stack, Text, TextInput } = Design;
     const Scroller = SheetScrollView() ?? ScrollView;
@@ -123,23 +125,29 @@ export function LibraryBrowser({ accountId, kind, onSent, header }: LibraryBrows
     const entries = [...folders.map(folder => ({ folder })), ...shown.map(item => ({ item }))];
     const pages = Math.max(1, Math.ceil(entries.length / perPage));
     const visible = entries.slice(page * perPage, (page + 1) * perPage);
-    const columns = VISUAL.has(kind) ? 3 : 2;
+    const columns = VISUAL.has(kind) ? compact ? 4 : 3 : 2;
     const tile = width ? Math.floor((width - GAP * (columns - 1)) / columns) : 0;
     const path = library ? folderPath(library, folderId) : [];
 
     const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width);
 
-    return <Scroller contentContainerStyle={[styles.content, { paddingBottom: 16 + bottom }]} keyboardShouldPersistTaps="handled">
-        <Stack spacing={12}>
+    const FolderPlus = icon("FolderPlusIcon", "FolderIcon");
+
+    return <Scroller contentContainerStyle={[compact ? styles.compactContent : styles.content, { paddingBottom: 16 + bottom }]} keyboardShouldPersistTaps="handled">
+        <Stack spacing={compact ? 8 : 12}>
             {header}
-            <TextInput size="md" placeholder={t(`search.${kind}` as Key)} value={search} onChange={(value: string) => setSearch(value)} isClearable onClear={() => setSearch("")} />
-            <View style={styles.crumb}>
-                {!query && path.length > 0 ? <Pressable accessibilityRole="button" onPress={() => setFolderId(path.at(-2)?.id ?? null)} style={[styles.crumb, { flex: 1 }]}>
-                    <Text variant="text-sm/semibold" color="text-link">{`‹ ${t("back")}`}</Text>
-                    <Text variant="text-sm/medium" color="text-muted" lineClamp={1} style={{ flexShrink: 1 }}>{path.map(folder => folder.name).join(" / ")}</Text>
-                </Pressable> : <View style={{ flex: 1 }} />}
-                <Button size="sm" variant="secondary" text={t("grid.createFolder")} onPress={() => library && promptCreateFolder(accountId, kind, folderId)} />
+            <View style={styles.searchRow}>
+                <View style={{ flex: 1 }}>
+                    <TextInput size="sm" placeholder={t(`search.${kind}` as Key)} value={search} onChange={(value: string) => setSearch(value)} isClearable onClear={() => setSearch("")} />
+                </View>
+                <Pressable accessibilityRole="button" accessibilityLabel={t("grid.createFolder")} hitSlop={4} onPress={() => library && promptCreateFolder(accountId, kind, folderId)} style={styles.iconButton}>
+                    {FolderPlus ? <FolderPlus size="sm" /> : <Text variant="text-lg/bold">+</Text>}
+                </Pressable>
             </View>
+            {!query && path.length > 0 && <Pressable accessibilityRole="button" onPress={() => setFolderId(path.at(-2)?.id ?? null)} style={styles.crumb}>
+                <Text variant="text-sm/semibold" color="text-link">{`‹ ${t("back")}`}</Text>
+                <Text variant="text-sm/medium" color="text-muted" lineClamp={1} style={{ flexShrink: 1 }}>{path.map(folder => folder.name).join(" / ")}</Text>
+            </Pressable>}
             {error ? <EmptyText>{error}</EmptyText>
                 : !library ? <EmptyText>{t("loading")}</EmptyText>
                     : !visible.length ? <EmptyText>{query ? t("empty.search") : folderId ? t("m.emptyFolder") : t("m.emptyRoot")}</EmptyText>
@@ -157,7 +165,7 @@ export function LibraryBrowser({ accountId, kind, onSent, header }: LibraryBrows
                 <Text variant="text-sm/medium" color="text-muted">{`${page + 1} / ${pages}`}</Text>
                 <Button size="sm" variant="secondary" text={t("page.next")} disabled={page >= pages - 1} onPress={() => setPage(page + 1)} />
             </View>}
-            <Text variant="text-xs/medium" color="text-muted" style={{ textAlign: "center" }}>{t("m.hint")}</Text>
+            {!compact && <Text variant="text-xs/medium" color="text-muted" style={{ textAlign: "center" }}>{t("m.hint")}</Text>}
         </Stack>
     </Scroller>;
 }
@@ -174,7 +182,7 @@ function Thumbnail({ url, size, fallbackIcon }: { url: string | undefined; size:
     return <Image source={{ uri: source }} style={{ width: size, height: size }} resizeMode="cover" onError={() => setFailed(true)} />;
 }
 
-const KIND_ICONS: Record<MediaKind, string[]> = {
+export const KIND_ICONS: Record<MediaKind, string[]> = {
     gif: ["GifIcon", "ImageIcon"],
     image: ["ImageIcon"],
     video: ["VideoIcon", "CirclePlayIcon"],
@@ -217,6 +225,9 @@ function FolderTile({ folder, library, items, size, visual, hideThumbnail, onPre
 
 const styles = StyleSheet.create({
     content: { paddingHorizontal: 16, paddingTop: 8 },
+    compactContent: { paddingHorizontal: 12, paddingTop: 8 },
+    searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(128,128,128,0.18)" },
     tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "rgba(128,128,128,0.14)" },
     tabActive: { backgroundColor: "rgba(88,101,242,0.35)" },

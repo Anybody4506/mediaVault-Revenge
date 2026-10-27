@@ -6,14 +6,14 @@
 import * as React from "react";
 import { ScrollView } from "react-native";
 
-import { collectDiagnostic } from "./diagnostic";
+import { collectDiagnostic, setDiagnostic } from "./diagnostic";
 import { clearLibrary, exportLibrary, importFromClipboard, importFromUrl } from "./actions";
 import { currentAccountId, notify } from "./discord";
 import type { Key } from "./i18n";
 import { t } from "./i18n";
 import { openLibrary } from "./library";
 import type { Settings } from "./settings";
-import { setSetting, TAB_SETTINGS, useSettings } from "./settings";
+import { CHAT_BUTTON_SETTINGS, setSetting, TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
 import { Clipboard, Design } from "./rv";
 import { confirmAction, icon, promptText } from "./ui";
@@ -96,7 +96,6 @@ export default function SettingsPage() {
         <TableRowGroup title="Behavior">
             {switchRow("alwaysSendInstantly", t("opt.instant"), "Otherwise the link is inserted in the chat box.")}
             {switchRow("pickerTabs", "Tabs in the GIF/emoji picker", "Images, Videos, Audio and Files tabs next to Emoji, GIF and Sticker. Reopen the picker after changing it.")}
-            {switchRow("chatButton", "Chat bar button", "A button next to the emoji button opens the library.")}
             {switchRow("hideUnsortedMedias", t("opt.hideUnsorted"))}
             {switchRow("hideThumbnail", t("opt.hideThumb"))}
         </TableRowGroup>
@@ -105,8 +104,21 @@ export default function SettingsPage() {
             {[20, 50, 100].map(value => <TableRadioRow key={value} label={String(value)} value={value} />)}
         </TableRadioGroup>
 
+        <TableRowGroup title="Chat bar buttons">
+            {(Object.keys(CHAT_BUTTON_SETTINGS) as (keyof typeof CHAT_BUTTON_SETTINGS)[]).map(kind => switchRow(CHAT_BUTTON_SETTINGS[kind], t(`tab.${kind}` as Key)))}
+        </TableRowGroup>
+
         <TableRowGroup title="Diagnostic">
-            <TableRow
+            <TableSwitchRow
+                label="Diagnostic mode"
+                subLabel="Records the Discord components MediaVault uses, for a bug report. Leave it off otherwise."
+                value={settings.diagnostic}
+                onValueChange={(value: boolean) => {
+                    void setSetting("diagnostic", value);
+                    setDiagnostic(value);
+                }}
+            />
+            {settings.diagnostic && <TableRow
                 label="Copy diagnostic"
                 subLabel="Copies the Discord component names MediaVault needs (chat bar, GIF/emoji picker), to send to the developer. Open the GIF/emoji picker once before."
                 icon={<Icon names={["BugIcon", "CopyIcon"]} />}
@@ -114,7 +126,7 @@ export default function SettingsPage() {
                     Clipboard.setString(collectDiagnostic());
                     notify(t("toast.copied"));
                 }}
-            />
+            />}
         </TableRowGroup>
 
         <Text variant="text-sm/medium" color="text-muted">{t("m.unsupported")}</Text>

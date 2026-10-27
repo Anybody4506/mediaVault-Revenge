@@ -17,7 +17,13 @@ export interface Settings {
     hideThumbnail: boolean;
     /** Send on tap. Otherwise the link is inserted in the chat box. */
     alwaysSendInstantly: boolean;
-    chatButton: boolean;
+    /** Chat bar buttons, next to the emoji button, as on desktop. */
+    chatImageButton: boolean;
+    chatVideoButton: boolean;
+    chatAudioButton: boolean;
+    chatFileButton: boolean;
+    /** Records Discord component names and calls for "Copy diagnostic". */
+    diagnostic: boolean;
     /** Images, Videos, Audio and Files tabs in Discord's GIF/emoji picker. */
     pickerTabs: boolean;
     maxMediasPerPage: number;
@@ -33,7 +39,11 @@ export const DefaultSettings: Settings = {
     hideUnsortedMedias: true,
     hideThumbnail: false,
     alwaysSendInstantly: true,
-    chatButton: true,
+    chatImageButton: true,
+    chatVideoButton: true,
+    chatAudioButton: false,
+    chatFileButton: false,
+    diagnostic: false,
     pickerTabs: true,
     maxMediasPerPage: 50
 };
@@ -45,6 +55,14 @@ export const TAB_SETTINGS = {
     audio: "showAudioTab",
     file: "showFileTab"
 } as const satisfies Record<MediaKind, keyof Settings>;
+
+/** Media kinds that can have a chat bar button (GIFs are in Discord's own GIF tab). */
+export const CHAT_BUTTON_SETTINGS = {
+    image: "chatImageButton",
+    video: "chatVideoButton",
+    audio: "chatAudioButton",
+    file: "chatFileButton"
+} as const satisfies Partial<Record<MediaKind, keyof Settings>>;
 
 interface PluginStorage {
     settings?: Partial<Settings>;

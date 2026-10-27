@@ -149,7 +149,7 @@ function decorate(tree: ReactElement, kinds: MediaKind[], kind: MediaKind | null
     if (kind) {
         const content = next[contentIndex] as any;
         next[contentIndex] = <View key="mediavault-content" style={[content?.props?.style, styles.content]}>
-            <LibraryBrowser accountId={currentAccountId() ?? ""} kind={kind} onSent={closePicker} />
+            <LibraryBrowser accountId={currentAccountId() ?? ""} kind={kind} onSent={closePicker} compact />
         </View>;
     }
     if (!injected) next.splice(contentIndex, 0, <FallbackTabs key="mediavault-tabs" kinds={kinds} active={kind} select={select} />);
