@@ -23,6 +23,9 @@ interface ChatInputActionButtonProps {
 const findRightActions = () => vendetta.metro.find((m: any) => m?.type?.displayName === "ChatInputRightActions");
 const findActionButton = (): FC<ChatInputActionButtonProps> | undefined => vendetta.metro.findByName("ChatInputActionButton");
 
+/** The button's native view: the diagnostic starts from it to walk Discord's React tree. */
+export const chatButtonHost: { current: any; } = { current: null };
+
 /** Shown in the diagnostic. */
 export const chatButtonStatus = { rightActionsFound: false, tries: 0, rendered: 0, actionButtonFound: false, insertedInto: false, siblings: [] as string[] };
 
@@ -74,7 +77,7 @@ function MediaVaultButton() {
     const onPress = () => openLibrary(currentAccountId());
     if (ChatInputActionButton && Icon) return <ChatInputActionButton accessibilityLabel={t("m.open")} IconComponent={Icon} onPress={onPress} />;
     // Recent Discord versions no longer export ChatInputActionButton: draw a round button the size of the others.
-    return <Pressable accessibilityRole="button" accessibilityLabel={t("m.open")} onPress={onPress} hitSlop={6} style={styles.button}>
+    return <Pressable accessibilityRole="button" accessibilityLabel={t("m.open")} onPress={onPress} hitSlop={6} style={styles.button} ref={(view: unknown) => { chatButtonHost.current = view; }}>
         {Icon ? <Icon size="md" /> : <Text style={styles.star}>★</Text>}
     </Pressable>;
 }

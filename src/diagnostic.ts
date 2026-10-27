@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { chatButtonStatus } from "./chatButton";
+import { chatButtonHost, chatButtonStatus } from "./chatButton";
 import { findByProps, patcher } from "./rv";
 
 /**
@@ -49,17 +49,19 @@ function describe(value: any, depth = 0): unknown {
 
 export function recordPortalKeyboard(): () => void {
     const unpatches: (() => void)[] = [];
-    for (const name of PORTAL_FUNCTIONS) {
+    // forEach rather than for...of: each hook needs its own `name` once the bundle is minified.
+    PORTAL_FUNCTIONS.forEach(name => {
         const module = findByProps(name);
-        if (typeof module?.[name] !== "function") continue;
+        if (typeof module?.[name] !== "function") return;
         let calls = 0;
         unpatches.push(patcher.before(name, module, args => {
             // The last calls are kept, a few per function, so opening the picker just before copying shows up.
             const entry = `${name}${JSON.stringify(describe(args))}`;
             if (++calls > 6) portalCalls.splice(portalCalls.findIndex(call => call.startsWith(`${name}[`)), 1);
             portalCalls.push(entry);
+            if (name === "setKeyboardType" && args[0]?.type === "expression") setTimeout(capturePicker, 1500);
         }));
-    }
+    });
     return () => unpatches.forEach(unpatch => unpatch());
 }
 
@@ -78,6 +80,44 @@ function portalModules() {
         if (store) out.portalStoreState = describe(store.getState?.() ?? store.__getLocalVars?.());
     } catch {}
     return out;
+}
+
+let pickerTree: string[] = [];
+/** Components that start a branch worth keeping in the tree dump. */
+const PICKER = /Expression|Picker|Gif|GIF|PortalKeyboard(?!Host)/;
+
+const nameOf = (type: any): string | undefined => typeof type === "string" ? undefined
+    : type?.displayName ?? type?.name ?? type?.render?.displayName ?? type?.render?.name ?? type?.type?.displayName ?? type?.type?.name;
+
+/**
+ * Walks Discord's React tree, starting from the MediaVault chat bar button, while the GIF/emoji picker is open.
+ * Its tab components are not exported, so this is the only way to learn their names and props.
+ */
+function capturePicker() {
+    try {
+        let fiber = chatButtonHost.current?.__internalInstanceHandle ?? chatButtonHost.current?._internalFiberInstanceHandleDEV;
+        if (!fiber) {
+            pickerTree = [`no fiber on the chat button (${Object.keys(chatButtonHost.current ?? {}).slice(0, 12).join(",")})`];
+            return;
+        }
+        while (fiber.return) fiber = fiber.return;
+        const lines: string[] = [];
+        // Depth-first with an explicit stack (the tree is too deep for recursion), keeping named components inside anything that looks like the picker.
+        const stack: [any, number, number][] = [[fiber, 0, 0]];
+        while (stack.length && lines.length < 600) {
+            const [current, depth, inside] = stack.pop()!;
+            if (!current) continue;
+            stack.push([current.sibling, depth, inside]);
+            const name = nameOf(current.type);
+            const matches = !!name && PICKER.test(name);
+            const keep = matches || (inside > 0 && !!name);
+            if (keep) lines.push(`${depth}${" ".repeat(Math.min(inside, 30))}${name}(${Object.keys(current.memoizedProps ?? {}).slice(0, 10).join(",")})`);
+            stack.push([current.child, depth + 1, matches ? Math.max(inside, 1) + 1 : inside > 0 ? inside + (keep ? 1 : 0) : 0]);
+        }
+        pickerTree = lines;
+    } catch (error) {
+        pickerTree = [`capture failed: ${error instanceof Error ? error.message : String(error)}`];
+    }
 }
 
 function namesOf(exports: any): string[] {
@@ -105,6 +145,7 @@ function namesOf(exports: any): string[] {
 }
 
 export function collectDiagnostic(): string {
+    if (!pickerTree.length) capturePicker();
     const names = new Set<string>();
     try {
         vendetta.metro.findAll((exports: any) => {
@@ -123,6 +164,7 @@ export function collectDiagnostic(): string {
         chatButton: chatButtonStatus,
         actionSheets: sheetKeys,
         portalCalls,
+        pickerTree,
         portal: portalModules(),
         modules: [...names].filter(name => !/GIFT|Gift|gift|Sticker|STICKER/.test(name)).sort()
     }, null, 1);
