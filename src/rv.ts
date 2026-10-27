@@ -88,8 +88,8 @@ export const patcher = {
     instead: (name: string, parent: any, hook: (args: any[], original: (...args: any[]) => any) => any): Unpatch => vendetta.patcher.instead(name, parent, hook)
 };
 
-/** Gorhom's scroll view scrolls inside a bottom sheet without fighting its drag gesture. */
-export const SheetScrollView = () => prop("BottomSheetScrollView") as AnyComponent | undefined;
+/** Gorhom's list scrolls inside a bottom sheet without fighting its drag gesture. */
+export const SheetFlatList = () => prop("BottomSheetFlatList") as AnyComponent | undefined;
 
 export const useSafeAreaInsets = (): { bottom: number; } => {
     const hook = prop("useSafeAreaInsets") as (() => { bottom: number; }) | undefined;

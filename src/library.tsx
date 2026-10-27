@@ -5,7 +5,7 @@
 
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { FlatList, Image, Pressable, StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 
 import { chooseMedia, withoutRecentlyRemoved } from "./actions";
@@ -13,11 +13,11 @@ import { notify, useNativeGifs } from "./discord";
 import type { Key } from "./i18n";
 import { t } from "./i18n";
 import type { LibraryData, MediaCategory, MediaKind, SavedMedia } from "./model";
-import { canonicalUrl, gifView } from "./model";
+import { canonicalUrl, gifView, isVideoUrl } from "./model";
 import { openFolderOptions, openMediaOptions, promptCreateFolder } from "./options";
 import { TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
-import { Design, SheetScrollView, useSafeAreaInsets } from "./rv";
+import { Design, SheetFlatList, useSafeAreaInsets } from "./rv";
 import { previewOf, thumbnailSource } from "./thumbs";
 import { EmptyText, hideSheet, icon, openSheet } from "./ui";
 import { useFreshUrl } from "./urls";
@@ -93,7 +93,8 @@ export interface LibraryBrowserProps {
 export function LibraryBrowser({ accountId, kind, onSent, header, compact, initialFolderId, link }: LibraryBrowserProps) {
     const settings = useSettings();
     const { Button, Stack, Text, TextInput } = Design;
-    const Scroller = SheetScrollView() ?? ScrollView;
+    // A virtualized list: only the rows near the screen are mounted, so the GIFs further down neither load nor play.
+    const List = (SheetFlatList() ?? FlatList) as React.ComponentType<any>;
     const { bottom } = useSafeAreaInsets();
     const [folderId, setFolderId] = useState<string | null>(initialFolderId ?? null);
     const shownKind = useRef(kind);
@@ -132,19 +133,56 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
     }, [items, folderId, query, settings.hideUnsortedMedias]);
 
     const perPage = settings.maxMediasPerPage;
-    const entries = [...folders.map(folder => ({ folder })), ...shown.map(item => ({ item }))];
+    const entries = useMemo(() => [...folders.map(folder => ({ folder })), ...shown.map(item => ({ item }))], [folders, shown]);
     const pages = Math.max(1, Math.ceil(entries.length / perPage));
-    const visible = entries.slice(page * perPage, (page + 1) * perPage);
+    const visible = useMemo(() => entries.slice(page * perPage, (page + 1) * perPage), [entries, page, perPage]);
     const columns = VISUAL.has(kind) && !compact ? 3 : 2;
+    const padding = compact ? 12 : 16;
     const tile = width ? Math.floor((width - GAP * (columns - 1)) / columns) : 0;
     const path = library ? folderPath(library, folderId) : [];
+    const visibleFolders = visible.flatMap(entry => "folder" in entry ? [entry.folder] : []);
+    // The media grid, row by row, for the list.
+    const rows = useMemo(() => {
+        const media = visible.flatMap(entry => "item" in entry ? [entry.item] : []);
+        const chunks: SavedMedia[][] = [];
+        for (let at = 0; at < media.length; at += columns) chunks.push(media.slice(at, at + columns));
+        return chunks;
+    }, [visible, columns]);
 
-    const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width);
+    const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width - padding * 2);
 
     const FolderPlus = icon("FolderPlusIcon", "FolderIcon");
 
-    return <Scroller contentContainerStyle={[compact ? styles.compactContent : styles.content, { paddingBottom: 16 + bottom }]} keyboardShouldPersistTaps="handled">
-        <Stack spacing={compact ? 8 : 12}>
+    const renderRow = ({ item: row }: { item: SavedMedia[]; }) => <View style={styles.mediaRow}>
+        {row.map(item => <MediaTile key={`m-${canonicalUrl(item.url)}`} item={item} size={tile} visual={VISUAL.has(kind)}
+            onPress={() => void chooseMedia(item).then(sent => sent && onSent())}
+            onLongPress={() => openMediaOptions({ accountId, item, folderId })} />)}
+    </View>;
+
+    const footer = (pages > 1 || !compact) && <View style={styles.footer}>
+        {pages > 1 && <View style={styles.pager}>
+            <Button size="sm" variant="secondary" text={t("page.prev")} disabled={page === 0} onPress={() => setPage(page - 1)} />
+            <Text variant="text-sm/medium" color="text-muted">{`${page + 1} / ${pages}`}</Text>
+            <Button size="sm" variant="secondary" text={t("page.next")} disabled={page >= pages - 1} onPress={() => setPage(page + 1)} />
+        </View>}
+        {!compact && <Text variant="text-xs/medium" color="text-muted" style={{ textAlign: "center" }}>{t("m.hint")}</Text>}
+    </View>;
+
+    return <List
+        data={tile > 0 && library && !error ? rows : []}
+        keyExtractor={(row: SavedMedia[]) => canonicalUrl(row[0].url)}
+        renderItem={renderRow}
+        onLayout={onLayout}
+        // Few rows mounted at a time, and the ones scrolled away detached, so off-screen GIFs stop playing.
+        initialNumToRender={3}
+        maxToRenderPerBatch={2}
+        updateCellsBatchingPeriod={60}
+        windowSize={3}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: padding, paddingTop: 8, paddingBottom: 16 + bottom }}
+        ListFooterComponent={footer || null}
+        ListHeaderComponent={<Stack spacing={compact ? 8 : 12}>
             {header}
             <View style={styles.searchRow}>
                 <View style={{ flex: 1 }}>
@@ -164,40 +202,30 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
             {error ? <EmptyText>{error}</EmptyText>
                 : !library ? <EmptyText>{t("loading")}</EmptyText>
                     : !visible.length ? <EmptyText>{query ? t("empty.search") : folderId ? t("m.emptyFolder") : t("m.emptyRoot")}</EmptyText>
-                        : <View onLayout={onLayout} style={{ gap: GAP }}>
-                            {/* Folders first, as wide cards on two columns like the desktop GIF categories, then the media grid. */}
-                            {tile > 0 && visible.some(entry => "folder" in entry) && <View style={styles.grid}>
-                                {visible.map(entry => "folder" in entry && <FolderTile key={`f-${entry.folder.id}`} folder={entry.folder} items={items}
-                                    width={Math.floor((width - GAP) / 2)} height={compact ? 64 : 80} visual={VISUAL.has(kind)} hideThumbnail={settings.hideThumbnail}
-                                    onPress={() => { setSearch(""); setFolderId(entry.folder.id); }}
-                                    onLongPress={() => openFolderOptions({ accountId, folderId: entry.folder.id, kind })} />)}
-                            </View>}
-                            {tile > 0 && visible.some(entry => "item" in entry) && <View style={styles.grid}>
-                                {visible.map(entry => "item" in entry && <MediaTile key={`m-${canonicalUrl(entry.item.url)}`} item={entry.item} size={tile} visual={VISUAL.has(kind)}
-                                    onPress={() => void chooseMedia(entry.item).then(sent => sent && onSent())}
-                                    onLongPress={() => openMediaOptions({ accountId, item: entry.item, folderId })} />)}
-                            </View>}
+                        // Folders first, as wide cards on two columns like the desktop GIF categories; the media rows follow.
+                        : tile > 0 && visibleFolders.length > 0 && <View style={styles.grid}>
+                            {visibleFolders.map(folder => <FolderTile key={`f-${folder.id}`} folder={folder} items={items}
+                                width={Math.floor((width - GAP) / 2)} height={compact ? 64 : 80} visual={VISUAL.has(kind)} hideThumbnail={settings.hideThumbnail}
+                                onPress={() => { setSearch(""); setFolderId(folder.id); }}
+                                onLongPress={() => openFolderOptions({ accountId, folderId: folder.id, kind })} />)}
                         </View>}
-            {pages > 1 && <View style={styles.pager}>
-                <Button size="sm" variant="secondary" text={t("page.prev")} disabled={page === 0} onPress={() => setPage(page - 1)} />
-                <Text variant="text-sm/medium" color="text-muted">{`${page + 1} / ${pages}`}</Text>
-                <Button size="sm" variant="secondary" text={t("page.next")} disabled={page >= pages - 1} onPress={() => setPage(page + 1)} />
-            </View>}
-            {!compact && <Text variant="text-xs/medium" color="text-muted" style={{ textAlign: "center" }}>{t("m.hint")}</Text>}
-        </Stack>
-    </Scroller>;
+        </Stack>}
+    />;
 }
 
 function Thumbnail({ url, size, height = size, fallbackIcon }: { url: string | undefined; size: number; height?: number; fallbackIcon: string[]; }) {
     const fresh = useFreshUrl(url);
-    const [failed, setFailed] = useState(false);
-    const source = thumbnailSource(fresh);
-    useEffect(() => setFailed(false), [source]);
-    if (!source || failed) {
+    // 0: the light thumbnail, 1: the file itself when the thumbnail fails, 2: an icon.
+    const [failures, setFailures] = useState(0);
+    const light = thumbnailSource(fresh);
+    useEffect(() => setFailures(0), [light]);
+    const original = fresh && !isVideoUrl(fresh) && fresh !== light ? fresh : null;
+    const source = failures === 0 ? light : failures === 1 ? original : null;
+    if (!source) {
         const Icon = icon(...fallbackIcon);
         return <View style={{ width: size, height, alignItems: "center", justifyContent: "center" }}>{Icon && <Icon size="md" />}</View>;
     }
-    return <Image source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailed(true)} />;
+    return <Image source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailures(failures + (failures === 0 && !original ? 2 : 1))} />;
 }
 
 export const KIND_ICONS: Record<MediaKind, string[]> = {
@@ -247,8 +275,6 @@ export function FolderTile({ folder, items, width, height, visual, hideThumbnail
 }
 
 const styles = StyleSheet.create({
-    content: { paddingHorizontal: 16, paddingTop: 8 },
-    compactContent: { paddingHorizontal: 12, paddingTop: 8 },
     searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(128,128,128,0.18)" },
     tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -256,6 +282,8 @@ const styles = StyleSheet.create({
     tabActive: { backgroundColor: "rgba(88,101,242,0.35)" },
     crumb: { flexDirection: "row", alignItems: "center", gap: 8 },
     grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP },
+    mediaRow: { flexDirection: "row", gap: GAP, marginTop: GAP },
+    footer: { gap: 12, marginTop: 12 },
     card: { borderRadius: 8, overflow: "hidden", backgroundColor: "rgba(128,128,128,0.14)" },
     row: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, minHeight: 48 },
     folder: { borderRadius: 8, overflow: "hidden", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
