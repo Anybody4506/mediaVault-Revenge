@@ -5,6 +5,7 @@
 
 import * as React from "react";
 import type { FC, ReactElement, ReactNode } from "react";
+import { Pressable, StyleSheet, Text } from "react-native";
 
 import { currentAccountId } from "./discord";
 import { t } from "./i18n";
@@ -23,7 +24,7 @@ const findRightActions = () => vendetta.metro.find((m: any) => m?.type?.displayN
 const findActionButton = (): FC<ChatInputActionButtonProps> | undefined => vendetta.metro.findByName("ChatInputActionButton");
 
 /** Shown in the diagnostic. */
-export const chatButtonStatus = { rightActionsFound: false, tries: 0, rendered: 0, actionButtonFound: false, insertedInto: false };
+export const chatButtonStatus = { rightActionsFound: false, tries: 0, rendered: 0, actionButtonFound: false, insertedInto: false, siblings: [] as string[] };
 
 /**
  * Replaces the desktop chat bar buttons: one button, next to the emoji button, that opens the library.
@@ -59,6 +60,7 @@ function insertButton(tree: ReactElement) {
     if (!node) return tree;
     chatButtonStatus.insertedInto = true;
     const { children } = node.props;
+    if (!chatButtonStatus.siblings.length) describeChildren(children);
     const index = children.indexOf(button);
     if (index !== -1) children.splice(index, 1);
     if (settings().chatButton) children.unshift(button);
@@ -69,8 +71,26 @@ function MediaVaultButton() {
     const ChatInputActionButton = findActionButton();
     const Icon = icon("StarIcon", "FolderIcon", "ImageIcon");
     chatButtonStatus.actionButtonFound = !!ChatInputActionButton;
-    if (!ChatInputActionButton || !Icon) return null;
-    return <ChatInputActionButton accessibilityLabel={t("m.open")} IconComponent={Icon} onPress={() => openLibrary(currentAccountId())} />;
+    const onPress = () => openLibrary(currentAccountId());
+    if (ChatInputActionButton && Icon) return <ChatInputActionButton accessibilityLabel={t("m.open")} IconComponent={Icon} onPress={onPress} />;
+    // Recent Discord versions no longer export ChatInputActionButton: draw a round button the size of the others.
+    return <Pressable accessibilityRole="button" accessibilityLabel={t("m.open")} onPress={onPress} hitSlop={6} style={styles.button}>
+        {Icon ? <Icon size="md" /> : <Text style={styles.star}>★</Text>}
+    </Pressable>;
+}
+
+const styles = StyleSheet.create({
+    button: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+    star: { fontSize: 22, color: "#b5bac1" }
+});
+
+/** Describes the chat bar's buttons, so the diagnostic shows what the MediaVault button sits next to. */
+function describeChildren(children: ReactNode[]) {
+    chatButtonStatus.siblings = children.slice(0, 8).map((child: any) => {
+        const type = child?.type;
+        const name = typeof type === "string" ? type : type?.displayName ?? type?.name ?? type?.type?.displayName ?? type?.type?.name ?? typeof type;
+        return `${name}(${Object.keys(child?.props ?? {}).join(",")})`;
+    });
 }
 
 /** `/mediavault` opens the library, whatever happens to the chat bar patch. */

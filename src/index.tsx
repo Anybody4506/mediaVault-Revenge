@@ -5,7 +5,7 @@
 
 import * as React from "react";
 import { patchChatInput, registerCommand } from "./chatButton";
-import { recordActionSheets } from "./diagnostic";
+import { recordActionSheets, recordPortalKeyboard } from "./diagnostic";
 import { patchMessageActionSheet } from "./message";
 import SettingsPage from "./settingsPage";
 import { resetLibraryCache } from "./store";
@@ -27,6 +27,7 @@ export default {
         attempt("Chat bar button", patchChatInput);
         attempt("/mediavault command", registerCommand);
         attempt("Diagnostic", recordActionSheets);
+        attempt("Portal keyboard diagnostic", recordPortalKeyboard);
     },
 
     onUnload() {

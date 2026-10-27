@@ -26,6 +26,60 @@ export function recordActionSheets(): () => void {
     });
 }
 
+/**
+ * The GIF/emoji picker is a "portal keyboard" shown in place of the system keyboard.
+ * These functions are watched to learn how Discord opens it, and its renderers.
+ */
+const PORTAL_FUNCTIONS = ["openPortalKeyboard", "handlePortalKeyboardOpen", "registerPortalKeyboardRenderer", "setKeyboardType", "closePortalKeyboard"];
+const portalCalls: string[] = [];
+
+function describe(value: any, depth = 0): unknown {
+    if (value === null || ["string", "number", "boolean", "undefined"].includes(typeof value)) return value;
+    if (typeof value === "function") return `fn ${value.displayName ?? value.name ?? "?"}/${value.length}`;
+    if (Array.isArray(value)) return depth > 1 ? `array(${value.length})` : value.slice(0, 6).map(item => describe(item, depth + 1));
+    if (typeof value === "object") {
+        if (depth > 1) return `{${Object.keys(value).slice(0, 12).join(",")}}`;
+        if (value.$$typeof) return `element ${value.type?.displayName ?? value.type?.name ?? value.type}`;
+        const out: Record<string, unknown> = {};
+        for (const key of Object.keys(value).slice(0, 20)) out[key] = describe(value[key], depth + 1);
+        return out;
+    }
+    return typeof value;
+}
+
+export function recordPortalKeyboard(): () => void {
+    const unpatches: (() => void)[] = [];
+    for (const name of PORTAL_FUNCTIONS) {
+        const module = findByProps(name);
+        if (typeof module?.[name] !== "function") continue;
+        let calls = 0;
+        unpatches.push(patcher.before(name, module, args => {
+            // The last calls are kept, a few per function, so opening the picker just before copying shows up.
+            const entry = `${name}${JSON.stringify(describe(args))}`;
+            if (++calls > 6) portalCalls.splice(portalCalls.findIndex(call => call.startsWith(`${name}[`)), 1);
+            portalCalls.push(entry);
+        }));
+    }
+    return () => unpatches.forEach(unpatch => unpatch());
+}
+
+function portalModules() {
+    const out: Record<string, unknown> = {};
+    for (const name of [...PORTAL_FUNCTIONS, "KeyboardTypes", "ExpressionPickerViewType", "PortalKeyboardUIStore", "PortalKeyboard", "useKeyboardType", "MediaKeyboardTarget"]) {
+        try {
+            const module = findByProps(name);
+            if (module) out[name] = { value: describe(module[name]), module: Object.keys(module).slice(0, 40) };
+        } catch (error) {
+            out[name] = `error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    }
+    try {
+        const store = vendetta.metro.findByStoreName("PortalKeyboardUIStore");
+        if (store) out.portalStoreState = describe(store.getState?.() ?? store.__getLocalVars?.());
+    } catch {}
+    return out;
+}
+
 function namesOf(exports: any): string[] {
     const names: string[] = [];
     const add = (value: unknown, path: string) => {
@@ -68,6 +122,8 @@ export function collectDiagnostic(): string {
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
         actionSheets: sheetKeys,
-        modules: [...names].sort()
+        portalCalls,
+        portal: portalModules(),
+        modules: [...names].filter(name => !/GIFT|Gift|gift|Sticker|STICKER/.test(name)).sort()
     }, null, 1);
 }
