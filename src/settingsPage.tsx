@@ -86,6 +86,7 @@ export default function SettingsPage() {
         </TableRowGroup>
 
         <TableRowGroup title={t("tab.gif")}>
+            {switchRow("gifFolders", "Folders in the GIF tab", "Your MediaVault GIF folders at the top of Discord's GIF tab, as on desktop.")}
             {switchRow("syncNativeGifs", "Sync with Discord's favorite GIFs", "The GIF tab shows Discord's own favorites (synced across devices), and adding a GIF also stars it in Discord.")}
         </TableRowGroup>
 

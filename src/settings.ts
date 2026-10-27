@@ -19,6 +19,8 @@ export interface Settings {
     alwaysSendInstantly: boolean;
     /** Chat bar buttons next to the emoji button, as on desktop. */
     chatButtons: boolean;
+    /** MediaVault's GIF folders at the top of Discord's GIF tab. */
+    gifFolders: boolean;
     /** Media kinds with a chat bar button and a GIF/emoji picker tab. */
     chatImageButton: boolean;
     chatVideoButton: boolean;
@@ -42,6 +44,7 @@ export const DefaultSettings: Settings = {
     hideThumbnail: false,
     alwaysSendInstantly: true,
     chatButtons: true,
+    gifFolders: true,
     chatImageButton: true,
     chatVideoButton: true,
     chatAudioButton: false,

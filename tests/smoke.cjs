@@ -118,7 +118,7 @@ assert.ok(patches.some(p => p.kind === "before" && p.name === "openLazy"), "acti
     assert.deepEqual(discordPages, [1], "Discord tabs still work");
     pickerState.setActiveIndex(3);
     assert.deepEqual(discordPages, [1], "MediaVault tab not passed to Discord");
-    assert.equal(stateCalls.at(-1), "image", "MediaVault tab selected");
+    assert.ok(stateCalls.includes("image"), "MediaVault tab selected");
     assert.equal(jsxRuntime.jsx("View", {}).type, "View", "other elements untouched");
 
     plugin.onUnload();

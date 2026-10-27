@@ -6,12 +6,14 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { currentAccountId } from "./discord";
 import type { Key } from "./i18n";
 import { t } from "./i18n";
-import { LibraryBrowser } from "./library";
+import { FolderTile, LibraryBrowser } from "./library";
+import { openFolderOptions } from "./options";
+import { useLibrary } from "./store";
 import type { MediaKind } from "./model";
 import { describe } from "./describe";
 import { Design, findByProps, findInReactTree, patcher } from "./rv";
@@ -28,7 +30,7 @@ import { CHAT_BUTTON_SETTINGS, settings, useSettings } from "./settings";
  */
 
 /** Shown in the diagnostic. */
-export const pickerStatus = { wrapped: 0, segmentedHook: false, injected: false, segmentedOptions: [] as string[], contentFound: false, error: "", hookCalls: [] as unknown[], segmentedState: null as unknown };
+export const pickerStatus = { wrapped: 0, segmentedHook: false, injected: false, segmentedOptions: [] as string[], contentFound: false, contentNames: [] as string[], tabs: [] as string[], error: "", hookCalls: [] as unknown[], segmentedState: null as unknown };
 
 interface Injection {
     kinds: MediaKind[];
@@ -86,13 +88,22 @@ export function patchExpressionPicker(): () => void {
         });
         const kinds = pickerKinds(tabs);
         const segmented = useRef<Injection["state"]>(undefined);
-        const injection: Injection = { kinds, select: setActive, injected: false };
+        // A MediaVault GIF folder opened from Discord's GIF tab.
+        const [gifFolder, setGifFolder] = useState<string | null>(null);
+        const select = (kind: MediaKind | null) => {
+            setActive(kind);
+            setGifFolder(null);
+        };
+        const injection: Injection = { kinds, select, injected: false };
 
         useEffect(() => {
-            const select = (kind: MediaKind) => setActive(kind);
-            openPicker = select;
+            const open = (kind: MediaKind) => {
+                setActive(kind);
+                setGifFolder(null);
+            };
+            openPicker = open;
             return () => {
-                if (openPicker === select) openPicker = null;
+                if (openPicker === open) openPicker = null;
             };
         }, []);
         // A tab opened from a chat bar button: move the segmented control's highlight onto it.
@@ -115,7 +126,7 @@ export function patchExpressionPicker(): () => void {
         if (injection.state) segmented.current = injection.state;
         const kind = active && kinds.includes(active) ? active : null;
         try {
-            return decorate(tree as ReactElement, kinds, kind, setActive, injection.injected);
+            return decorate(tree as ReactElement, { kinds, kind, select, injected: injection.injected, gifFolder, setGifFolder, gifFolders: tabs.gifFolders });
         } catch (error) {
             pickerStatus.error = error instanceof Error ? error.message : String(error);
             return tree;
@@ -184,17 +195,30 @@ function extendTabs(args: any[], hook: (...args: any[]) => any) {
     const state = hook(wrapped);
     injection.injected = true;
     injection.state = { state, base };
+    pickerStatus.tabs = items.map(item => String(item?.id ?? item?.label));
     return state;
 }
 
 /** Shows the MediaVault grid in place of the picker's content, and the fallback tab row when needed. */
-function decorate(tree: ReactElement, kinds: MediaKind[], kind: MediaKind | null, select: (kind: MediaKind | null) => void, injected: boolean): ReactNode {
+interface Decoration {
+    kinds: MediaKind[];
+    kind: MediaKind | null;
+    select(kind: MediaKind | null): void;
+    injected: boolean;
+    gifFolder: string | null;
+    setGifFolder(folderId: string | null): void;
+    gifFolders: boolean;
+}
+
+const typeName = (node: any): string => node?.type?.name ?? node?.type?.displayName ?? node?.type?.type?.name ?? "";
+
+function decorate(tree: ReactElement, { kinds, kind, select, injected, gifFolder, setGifFolder, gifFolders }: Decoration): ReactNode {
     const root = tree as any;
     const children: ReactNode[] | undefined = Array.isArray(root?.props?.children) ? root.props.children : undefined;
-    if (!children || !kinds.length) return tree;
+    if (!children) return tree;
 
     // The content is the child that holds the active picker (EmojiPicker, GIF picker...), not the segmented control.
-    const holds = (node: any, pattern: RegExp) => !!findInReactTree(node, candidate => pattern.test(candidate?.type?.name ?? candidate?.type?.displayName ?? candidate?.type?.type?.name ?? ""));
+    const holds = (node: any, pattern: RegExp) => !!findInReactTree(node, candidate => pattern.test(typeName(candidate)));
     let contentIndex = children.findIndex(child => child && holds(child, /Picker|Gif|GIF|Sticker|Soundboard/) && !holds(child, /SegmentedControl/));
     pickerStatus.contentFound = contentIndex !== -1;
     if (!pickerStatus.segmentedState) {
@@ -204,14 +228,40 @@ function decorate(tree: ReactElement, kinds: MediaKind[], kind: MediaKind | null
     if (contentIndex === -1) contentIndex = children.length - 1;
 
     const next = [...children];
+    const content = next[contentIndex] as any;
+    pickerStatus.contentNames = [...new Set([content, ...[content?.props?.children].flat()].map(typeName).filter(Boolean))].slice(0, 8);
+    const accountId = currentAccountId() ?? "";
+    // Discord's GIF tab: MediaVault's GIF folders on top, as on desktop, and an opened folder in place of the GIFs.
+    const gifTab = !kind && gifFolders && !!content && holds(content, /gif/i) && !holds(content, /Emoji|Sticker/);
+    if (gifTab && gifFolder) {
+        next[contentIndex] = <View key="mediavault-gif-folder" style={[content.props?.style, styles.content]}>
+            <LibraryBrowser accountId={accountId} kind="gif" initialFolderId={gifFolder} back={{ label: "GIF", onPress: () => setGifFolder(null) }} onSent={closePicker} compact />
+        </View>;
+    } else if (gifTab) {
+        next[contentIndex] = React.cloneElement(content, undefined, <GifFolderStrip key="mediavault-gif-folders" accountId={accountId} onOpen={setGifFolder} />, ...[content.props?.children].flat());
+    }
     if (kind) {
-        const content = next[contentIndex] as any;
         next[contentIndex] = <View key="mediavault-content" style={[content?.props?.style, styles.content]}>
             <LibraryBrowser accountId={currentAccountId() ?? ""} kind={kind} onSent={closePicker} compact />
         </View>;
     }
-    if (!injected) next.splice(contentIndex, 0, <FallbackTabs key="mediavault-tabs" kinds={kinds} active={kind} select={select} />);
+    if (!injected && kinds.length) next.splice(contentIndex, 0, <FallbackTabs key="mediavault-tabs" kinds={kinds} active={kind} select={select} />);
     return React.cloneElement(tree, undefined, ...next);
+}
+
+/** A row of MediaVault's top-level GIF folders, shown above Discord's GIFs. */
+function GifFolderStrip({ accountId, onOpen }: { accountId: string; onOpen(folderId: string): void; }) {
+    const current = useSettings();
+    const { library } = useLibrary(accountId);
+    if (!library) return null;
+    const folders = library.categories.filter(category => (category.kind === "gif" || category.kind === "all") && !category.parentId);
+    if (!folders.length) return null;
+    const gifs = library.items.filter(item => item.kind === "gif");
+    return <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.strip} contentContainerStyle={styles.stripContent}>
+        {folders.map(folder => <FolderTile key={folder.id} folder={folder} items={gifs} width={132} height={60} visual hideThumbnail={current.hideThumbnail}
+            onPress={() => onOpen(folder.id)}
+            onLongPress={() => openFolderOptions({ accountId, folderId: folder.id, kind: "gif" })} />)}
+    </ScrollView>;
 }
 
 function FallbackTabs({ kinds, active, select }: { kinds: MediaKind[]; active: MediaKind | null; select(kind: MediaKind | null): void; }) {
@@ -231,6 +281,8 @@ function closePicker() {
 
 const styles = StyleSheet.create({
     content: { flex: 1 },
+    strip: { flexGrow: 0 },
+    stripContent: { gap: 8, paddingHorizontal: 12, paddingVertical: 6 },
     tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 16, paddingVertical: 6 },
     tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "rgba(128,128,128,0.14)" },
     tabActive: { backgroundColor: "rgba(88,101,242,0.35)" }

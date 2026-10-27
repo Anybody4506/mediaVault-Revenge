@@ -4,7 +4,7 @@
  */
 
 import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 
@@ -83,15 +83,20 @@ export interface LibraryBrowserProps {
     header?: React.ReactNode;
     /** Denser layout for the GIF/emoji picker tabs: 4 columns, no hint. */
     compact?: boolean;
+    /** Folder open at first. */
+    initialFolderId?: string | null;
+    /** A "‹ label" row at the top level, to leave the library (the GIF tab's folders go back to Discord's GIFs). */
+    back?: { label: string; onPress(): void; };
 }
 
 /** Search, folders and the media grid of one tab: the body of the library sheet, and of the GIF/emoji picker tabs. */
-export function LibraryBrowser({ accountId, kind, onSent, header, compact }: LibraryBrowserProps) {
+export function LibraryBrowser({ accountId, kind, onSent, header, compact, initialFolderId, back }: LibraryBrowserProps) {
     const settings = useSettings();
     const { Button, Stack, Text, TextInput } = Design;
     const Scroller = SheetScrollView() ?? ScrollView;
     const { bottom } = useSafeAreaInsets();
-    const [folderId, setFolderId] = useState<string | null>(null);
+    const [folderId, setFolderId] = useState<string | null>(initialFolderId ?? null);
+    const shownKind = useRef(kind);
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(0);
     const [width, setWidth] = useState(0);
@@ -100,7 +105,12 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact }: Lib
     const nativeGifs = useNativeGifs(kind === "gif" && settings.syncNativeGifs);
     const items = useTabItems(library, kind, nativeGifs, settings.syncNativeGifs);
 
-    useEffect(() => { setFolderId(null); setSearch(""); }, [kind]);
+    useEffect(() => {
+        if (shownKind.current === kind) return; // Not on mount, which would close the initial folder.
+        shownKind.current = kind;
+        setFolderId(null);
+        setSearch("");
+    }, [kind]);
     useEffect(() => setPage(0), [kind, folderId, search]);
     // The open folder may have been deleted from its options.
     useEffect(() => {
@@ -144,6 +154,9 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact }: Lib
                     {FolderPlus ? <FolderPlus size="sm" /> : <Text variant="text-lg/bold">+</Text>}
                 </Pressable>
             </View>
+            {!query && !path.length && back && <Pressable accessibilityRole="button" onPress={back.onPress} style={styles.crumb}>
+                <Text variant="text-sm/semibold" color="text-link">{`‹ ${back.label}`}</Text>
+            </Pressable>}
             {!query && path.length > 0 && <Pressable accessibilityRole="button" onPress={() => setFolderId(path.at(-2)?.id ?? null)} style={styles.crumb}>
                 <Text variant="text-sm/semibold" color="text-link">{`‹ ${t("back")}`}</Text>
                 <Text variant="text-sm/medium" color="text-muted" lineClamp={1} style={{ flexShrink: 1 }}>{path.map(folder => folder.name).join(" / ")}</Text>
@@ -151,14 +164,19 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact }: Lib
             {error ? <EmptyText>{error}</EmptyText>
                 : !library ? <EmptyText>{t("loading")}</EmptyText>
                     : !visible.length ? <EmptyText>{query ? t("empty.search") : folderId ? t("m.emptyFolder") : t("m.emptyRoot")}</EmptyText>
-                        : <View onLayout={onLayout} style={styles.grid}>
-                            {tile > 0 && visible.map(entry => "folder" in entry
-                                ? <FolderTile key={`f-${entry.folder.id}`} folder={entry.folder} library={library} items={items} size={tile} visual={VISUAL.has(kind)} hideThumbnail={settings.hideThumbnail}
+                        : <View onLayout={onLayout} style={{ gap: GAP }}>
+                            {/* Folders first, as wide cards on two columns like the desktop GIF categories, then the media grid. */}
+                            {tile > 0 && visible.some(entry => "folder" in entry) && <View style={styles.grid}>
+                                {visible.map(entry => "folder" in entry && <FolderTile key={`f-${entry.folder.id}`} folder={entry.folder} items={items}
+                                    width={Math.floor((width - GAP) / 2)} height={compact ? 64 : 80} visual={VISUAL.has(kind)} hideThumbnail={settings.hideThumbnail}
                                     onPress={() => { setSearch(""); setFolderId(entry.folder.id); }}
-                                    onLongPress={() => openFolderOptions({ accountId, folderId: entry.folder.id, kind })} />
-                                : <MediaTile key={`m-${canonicalUrl(entry.item.url)}`} item={entry.item} size={tile} visual={VISUAL.has(kind)}
+                                    onLongPress={() => openFolderOptions({ accountId, folderId: entry.folder.id, kind })} />)}
+                            </View>}
+                            {tile > 0 && visible.some(entry => "item" in entry) && <View style={styles.grid}>
+                                {visible.map(entry => "item" in entry && <MediaTile key={`m-${canonicalUrl(entry.item.url)}`} item={entry.item} size={tile} visual={VISUAL.has(kind)}
                                     onPress={() => void chooseMedia(entry.item).then(sent => sent && onSent())}
                                     onLongPress={() => openMediaOptions({ accountId, item: entry.item, folderId })} />)}
+                            </View>}
                         </View>}
             {pages > 1 && <View style={styles.pager}>
                 <Button size="sm" variant="secondary" text={t("page.prev")} disabled={page === 0} onPress={() => setPage(page - 1)} />
@@ -170,16 +188,16 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact }: Lib
     </Scroller>;
 }
 
-function Thumbnail({ url, size, fallbackIcon }: { url: string | undefined; size: number; fallbackIcon: string[]; }) {
+function Thumbnail({ url, size, height = size, fallbackIcon }: { url: string | undefined; size: number; height?: number; fallbackIcon: string[]; }) {
     const fresh = useFreshUrl(url);
     const [failed, setFailed] = useState(false);
     const source = thumbnailSource(fresh);
     useEffect(() => setFailed(false), [source]);
     if (!source || failed) {
         const Icon = icon(...fallbackIcon);
-        return <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>{Icon && <Icon size="md" />}</View>;
+        return <View style={{ width: size, height, alignItems: "center", justifyContent: "center" }}>{Icon && <Icon size="md" />}</View>;
     }
-    return <Image source={{ uri: source }} style={{ width: size, height: size }} resizeMode="cover" onError={() => setFailed(true)} />;
+    return <Image source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailed(true)} />;
 }
 
 export const KIND_ICONS: Record<MediaKind, string[]> = {
@@ -204,22 +222,27 @@ function MediaTile({ item, size, visual, onPress, onLongPress }: { item: SavedMe
     </Pressable>;
 }
 
-function FolderTile({ folder, library, items, size, visual, hideThumbnail, onPress, onLongPress }: {
-    folder: MediaCategory; library: LibraryData; items: SavedMedia[]; size: number; visual: boolean; hideThumbnail: boolean; onPress(): void; onLongPress(): void;
+/** Black or white, whichever reads better on a folder color. */
+function readableOn(color: string) {
+    const hex = /^#?([da-f]{6})$/i.exec(color)?.[1];
+    if (!hex) return "#ffffff";
+    const [r, g, b] = [0, 2, 4].map(at => parseInt(hex.slice(at, at + 2), 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 ? "#000000" : "#ffffff";
+}
+
+/** Same look as the desktop folders (and Discord's GIF categories): color or cover image, dark fade, centered name. */
+export function FolderTile({ folder, items, width, height, visual, hideThumbnail, onPress, onLongPress }: {
+    folder: MediaCategory; items: SavedMedia[]; width: number; height: number; visual: boolean; hideThumbnail: boolean; onPress(): void; onLongPress(): void;
 }) {
     const { Text } = Design;
-    const count = items.filter(item => item.categoryId === folder.id).length + library.categories.filter(category => category.parentId === folder.id).length;
+    const color = folder.color ?? "#202225";
     const first = items.find(item => item.categoryId === folder.id);
     const thumbnail = hideThumbnail || !visual ? undefined : folder.thumbnail ?? (first && previewOf(first));
-    const FolderIcon = icon("FolderIcon");
     return <Pressable accessibilityRole="button" accessibilityLabel={t("folder.openAria", { name: folder.name })} onPress={onPress} onLongPress={onLongPress}
-        style={[styles.card, { width: size, height: visual ? size : undefined, backgroundColor: folder.color ?? "#202225" }, !visual && styles.row]}>
-        {thumbnail && <View style={{ position: "absolute", opacity: 0.45 }}><Thumbnail url={thumbnail} size={size} fallbackIcon={["FolderIcon"]} /></View>}
-        <View style={visual ? styles.folderLabel : styles.row}>
-            {FolderIcon && <FolderIcon size="sm" color="#ffffff" />}
-            <Text variant="text-sm/bold" color="always-white" lineClamp={2} style={{ flexShrink: 1 }}>{folder.name}</Text>
-            <Text variant="text-xs/medium" color="always-white">{String(count)}</Text>
-        </View>
+        style={[styles.folder, { width, height, backgroundColor: color }]}>
+        {thumbnail && <View style={StyleSheet.absoluteFill}><Thumbnail url={thumbnail} size={width} height={height} fallbackIcon={["FolderIcon"]} /></View>}
+        {thumbnail && <View style={[StyleSheet.absoluteFill, styles.folderFade]} />}
+        <Text variant="text-md/bold" lineClamp={2} style={[styles.folderName, { color: thumbnail ? "#ffffff" : readableOn(color) }, !thumbnail && styles.noShadow]}>{folder.name}</Text>
     </Pressable>;
 }
 
@@ -235,6 +258,9 @@ const styles = StyleSheet.create({
     grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP },
     card: { borderRadius: 8, overflow: "hidden", backgroundColor: "rgba(128,128,128,0.14)" },
     row: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, minHeight: 48 },
-    folderLabel: { flex: 1, justifyContent: "flex-end", padding: 8, gap: 2 },
+    folder: { borderRadius: 8, overflow: "hidden", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
+    folderFade: { backgroundColor: "rgba(0,0,0,0.45)" },
+    folderName: { textAlign: "center", textShadowColor: "rgba(0,0,0,0.8)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+    noShadow: { textShadowRadius: 0 },
     pager: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }
 });
