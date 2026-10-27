@@ -1,0 +1,15 @@
+{
+	"name": "mediavault-vendetta",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "node build.mjs",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/react": "18.3.12",
+		"react-native": "0.76.9",
+		"rolldown": "1.0.0-beta.30",
+		"typescript": "5.9.3"
+	}
+}

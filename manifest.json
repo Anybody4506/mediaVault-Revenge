@@ -1,0 +1,14 @@
+{
+    "name": "MediaVault",
+    "description": "Favorites library for GIFs, images, videos, audio and files, with folders, search and automatically renewed links. Port of the Equicord plugin.",
+    "authors": [
+        {
+            "name": "Anybody4506",
+            "id": "0"
+        }
+    ],
+    "main": "index.js",
+    "vendetta": {
+        "icon": "ic_star_filled"
+    }
+}
