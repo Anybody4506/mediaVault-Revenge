@@ -15,6 +15,7 @@ https://raw.githubusercontent.com/Anybody4506/mediaVault-Revenge/main/dist/Media
 ## Features
 
 - **Save from any message.** Long-press a message: each of its media gets an "Add to MediaVault" / "Remove from MediaVault" row, plus "Add all media" and "Open MediaVault". This replaces the desktop star and the right-click menu.
+- **Tabs in Discord's GIF/emoji picker.** Images, Videos, Audio and Files sit next to Emoji, GIF and Sticker and show the MediaVault grid (search, folders, long-press options). Can be turned off in the settings.
 - **Library sheet**, opened with the button next to the emoji button in the chat bar, the `/mediavault` command, the message long-press sheet, or the plugin settings. Tabs for GIF, Images, Videos, Audio and Files (each can be hidden), search, pages and folders.
 - **Folders and subfolders** with colors and thumbnails. Long-press a folder to create a subfolder, rename it, change its color, reorder it, move it, set its thumbnail or delete it.
 - **Media options.** Long-press a media to send it, rename it, move it to a folder, use it as the folder thumbnail, copy its link, message link or source link, or remove it.
@@ -27,7 +28,7 @@ https://raw.githubusercontent.com/Anybody4506/mediaVault-Revenge/main/dist/Media
 ## Differences with the desktop plugin
 
 - No local copies of media, no copies folder and no sending as an attachment (they need the desktop app).
-- No takeover of Discord's GIF picker or tabs in the expression picker: the mobile picker is a different component.
+- Discord's GIF tab is not replaced: it already shows your favorite GIFs, synced with MediaVault.
 - No drag and drop: "Move to" and "Move before / after" replace it.
 - The library is stored on the phone, per Discord account, in the plugin's storage. It is not synced with the desktop plugin: use an export and "Import from a link" to move it.
 
@@ -45,7 +46,7 @@ Tests: `node tests/smoke.cjs` loads the built plugin the way Revenge does, with 
 
 ## Status
 
-Not yet tested on a phone. The plugin follows the API that classic Revenge gives to Vendetta plugins (`revenge-bundle/src/core/vendetta/api.tsx`). If a Discord update breaks one part (the chat bar button, the message long-press rows), the other entry points keep working; the error is in Revenge's logs (Settings → Revenge → Developer → Debug logs).
+Not yet tested on a phone. The plugin follows the API that classic Revenge gives to Vendetta plugins (`revenge-bundle/src/core/vendetta/api.tsx`). If a Discord update breaks one part (the picker tabs, the chat bar button, the message long-press rows), the other entry points keep working. "Copy diagnostic" in the plugin settings copies what MediaVault found in Discord, for a bug report; the error is in Revenge's logs (Settings → Revenge → Developer → Debug logs).
 
 ## Credits and license
 
