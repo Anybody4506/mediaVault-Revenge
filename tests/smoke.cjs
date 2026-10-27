@@ -32,6 +32,7 @@ const fakeReact = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.length > 1 ? children : children[0] } }),
     cloneElement: (element, props, ...children) => ({ ...element, props: { ...element.props, ...props, children } }),
     useState: initial => [initial, value => stateCalls.push(value)],
+    Component: class {},
     Fragment: "Fragment"
 };
 // Discord's jsx runtime and segmented control hook, as used by the GIF/emoji picker.

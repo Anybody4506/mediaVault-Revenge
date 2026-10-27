@@ -185,7 +185,7 @@ function Thumbnail({ url, size, fallbackIcon }: { url: string | undefined; size:
 export const KIND_ICONS: Record<MediaKind, string[]> = {
     gif: ["GifIcon", "ImageIcon"],
     image: ["ImageIcon"],
-    video: ["VideoIcon", "CirclePlayIcon"],
+    video: ["CirclePlayIcon", "PlayIcon", "VideoIcon"],
     audio: ["MusicIcon", "SoundboardIcon", "VoiceNormalIcon"],
     file: ["PaperIcon", "AttachmentIcon"]
 };

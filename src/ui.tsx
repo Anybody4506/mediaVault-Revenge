@@ -13,13 +13,45 @@ import { ActionSheetActionCreators, AlertActionCreators, Design, lookupIcon } fr
 
 type IconComponent = NonNullable<ReturnType<typeof lookupIcon>>;
 
-/** First generated Discord icon that exists in this version of the app. */
-export function icon(...names: string[]): IconComponent | undefined {
-    for (const name of names) {
-        const found = lookupIcon(name);
-        if (found) return found;
+/** Icons that threw while rendering: some Discord components named like icons need props of their own. */
+const brokenIcons = new Set<string>();
+const safeIcons = new Map<string, IconComponent>();
+
+class IconBoundary extends React.Component<{ onError(): void; children?: React.ReactNode; }, { failed: boolean; }> {
+    state = { failed: false };
+    static getDerivedStateFromError() {
+        return { failed: true };
     }
-    return undefined;
+    componentDidCatch() {
+        this.props.onError();
+    }
+    render() {
+        return this.state.failed ? null : this.props.children;
+    }
+}
+
+/**
+ * First generated Discord icon that exists in this version of the app, rendered so that an icon that throws
+ * (for example a `VideoIcon` that expects a variant prop) falls back to the next name instead of crashing Discord.
+ */
+export function icon(...names: string[]): IconComponent | undefined {
+    if (!names.some(name => lookupIcon(name))) return undefined;
+    const key = names.join("|");
+    let Safe = safeIcons.get(key);
+    if (!Safe) {
+        Safe = function SafeIcon(props: any) {
+            const [, rerender] = useState(0);
+            const name = names.find(candidate => !brokenIcons.has(candidate) && lookupIcon(candidate));
+            const Found = name ? lookupIcon(name) : undefined;
+            if (!name || !Found) return null;
+            return <IconBoundary key={name} onError={() => {
+                brokenIcons.add(name);
+                rerender(count => count + 1);
+            }}><Found {...props} /></IconBoundary>;
+        } as IconComponent;
+        safeIcons.set(key, Safe);
+    }
+    return Safe;
 }
 
 export function openSheet<P extends object>(key: string, Sheet: ComponentType<P>, props: P, stacking: "stack" | "replaceTopSheet" | "replaceAll" = "stack") {
