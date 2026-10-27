@@ -37,6 +37,8 @@ const fakeReact = {
 // Discord's jsx runtime and segmented control hook, as used by the GIF/emoji picker.
 const jsxRuntime = { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
 const segmented = { useSegmentedControlState: options => ({ items: options.items, options, setActiveIndex: index => options.onPageChange?.(index) }) };
+// A module re-exporting the hook: the picker may call either one.
+const segmentedReexport = { get useSegmentedControlState() { return segmented.useSegmentedControlState; }, set useSegmentedControlState(value) { segmented.useSegmentedControlState = value; } };
 
 const vendetta = {
     patcher: { before: patch("before"), after: patch("after"), instead: patch("instead") },
@@ -45,6 +47,7 @@ const vendetta = {
         find: () => undefined,
         findByName: () => undefined,
         findByStoreName: () => undefined,
+        findByPropsAll: (...props) => props[0] === "useSegmentedControlState" ? [segmented, segmentedReexport] : [],
         findByProps: (...props) => {
             if (props[0] === "openLazy") return sheets;
             if (props[0] === "ActionSheet") return { ActionSheet };
@@ -101,7 +104,7 @@ assert.ok(patches.some(p => p.kind === "before" && p.name === "openLazy"), "acti
     const discordPages = [];
     let pickerState;
     function ExpressionPicker() {
-        pickerState = segmented.useSegmentedControlState({ items: [{ id: "emoji" }, { id: "gif" }, { id: "sticker" }], onPageChange: index => discordPages.push(index) });
+        pickerState = segmentedReexport.useSegmentedControlState({ items: [{ id: "emoji" }, { id: "gif" }, { id: "sticker" }], onPageChange: index => discordPages.push(index) });
         return { type: "View", props: { children: [{ type: "View", props: { children: [] } }, { type: "View", props: { children: [] } }] } };
     }
     const element = jsxRuntime.jsx(ExpressionPicker, { channel: {} });

@@ -80,50 +80,53 @@ export function patchExpressionPicker(): () => void {
         }));
     });
 
-    const segmented = findByProps("useSegmentedControlState");
-    if (segmented) {
-        pickerStatus.segmentedHook = true;
-        unpatches.push(patcher.instead("useSegmentedControlState", segmented, (args, hook) => {
-            const injection = rendering;
-            const [options] = args as [any];
-            if (injection && pickerStatus.hookCalls.length < 4) pickerStatus.hookCalls.push(describe(args));
-            if (!injection || !Array.isArray(options?.items) || !injection.kinds.length) return hook(...args);
-            rendering = null; // Only the picker's own segmented control.
-            pickerStatus.segmentedOptions = Object.keys(options);
-            const base = options.items.length;
-            const items = [...options.items, ...injection.kinds.map(kind => ({ id: `mediavault-${kind}`, label: t(`tab.${kind}` as Key), page: null }))];
-            const indexOf = (value: unknown) => typeof value === "number" ? value
-                : items.findIndex(item => item === value || item.id === value || (value as any)?.id === item.id);
-            // A tap on a MediaVault tab selects it; a tap on Discord's tabs leaves MediaVault and goes on as usual.
-            const handles = (value: unknown) => {
-                const index = indexOf(value);
-                if (index >= base) {
-                    injection.select(injection.kinds[index - base]);
-                    return true;
-                }
-                if (index >= 0) injection.select(null);
-                return false;
-            };
-            const wrapped: Record<string, unknown> = { ...options, items };
-            for (const key of Object.keys(options)) {
-                if (typeof options[key] !== "function" || key === "items") continue;
-                wrapped[key] = (...callArgs: unknown[]) => handles(callArgs[0]) ? undefined : options[key](...callArgs);
-            }
-            const state = hook(wrapped);
-            injection.injected = true;
-            if (state && typeof state.setActiveIndex === "function" && !state.__mediavault) {
-                const setActiveIndex = state.setActiveIndex;
-                state.setActiveIndex = (index: unknown, ...rest: unknown[]) => {
-                    handles(index);
-                    return setActiveIndex(index, ...rest);
-                };
-                state.__mediavault = true;
-            }
-            return state;
-        }));
-    }
+    // Discord has several copies of the hook (the original module and modules re-exporting it), and the picker
+    // does not use the first one found: every copy is patched. Nested copies see `rendering` cleared and pass through.
+    const modules: any[] = vendetta.metro.findByPropsAll?.("useSegmentedControlState") ?? [findByProps("useSegmentedControlState")].filter(Boolean);
+    modules.forEach(module => {
+        try {
+            unpatches.push(patcher.instead("useSegmentedControlState", module, extendTabs));
+            pickerStatus.segmentedHook = true;
+        } catch {
+            // Re-exports defined as read-only getters cannot be patched; patching the original module covers them.
+        }
+    });
 
-    return () => unpatches.forEach(unpatch => unpatch());
+    // Reverse order, so nested patches of the same hook are undone cleanly.
+    return () => unpatches.reverse().forEach(unpatch => unpatch());
+}
+
+/** Adds MediaVault's tabs to the picker's segmented control (Emoji / GIF / Sticker). */
+function extendTabs(args: any[], hook: (...args: any[]) => any) {
+    const injection = rendering;
+    const [options] = args as [any];
+    if (injection && pickerStatus.hookCalls.length < 4) pickerStatus.hookCalls.push(describe(args));
+    if (!injection || !Array.isArray(options?.items) || !injection.kinds.length) return hook(...args);
+    rendering = null; // Only the picker's own segmented control.
+    pickerStatus.segmentedOptions = Object.keys(options);
+    const base = options.items.length;
+    const items = [...options.items, ...injection.kinds.map(kind => ({ id: `mediavault-${kind}`, label: t(`tab.${kind}` as Key), page: null }))];
+    const indexOf = (value: unknown) => typeof value === "number" ? value
+        : items.findIndex(item => item === value || item.id === value || (value as any)?.id === item.id);
+    // A tap on a MediaVault tab selects it; a tap on Discord's tabs leaves MediaVault and goes on as usual.
+    const handles = (value: unknown) => {
+        const index = indexOf(value);
+        if (index >= base) {
+            injection.select(injection.kinds[index - base]);
+            return true;
+        }
+        if (index >= 0) injection.select(null);
+        return false;
+    };
+    const wrapped: Record<string, unknown> = { ...options, items };
+    // forEach rather than for...of: each wrapper needs its own `key` once the bundle is minified.
+    Object.keys(options).forEach(key => {
+        if (typeof options[key] !== "function") return;
+        wrapped[key] = (...callArgs: unknown[]) => handles(callArgs[0]) ? undefined : options[key](...callArgs);
+    });
+    const state = hook(wrapped);
+    injection.injected = true;
+    return state;
 }
 
 /** Shows the MediaVault grid in place of the picker's content, and the fallback tab row when needed. */
