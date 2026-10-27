@@ -4,18 +4,19 @@
  */
 
 import * as React from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { currentAccountId } from "./discord";
 import type { Key } from "./i18n";
 import { t } from "./i18n";
-import { KINDS, LibraryBrowser } from "./library";
+import { LibraryBrowser } from "./library";
 import type { MediaKind } from "./model";
 import { describe } from "./describe";
 import { Design, findByProps, findInReactTree, patcher } from "./rv";
-import { settings, TAB_SETTINGS, useSettings } from "./settings";
+import type { Settings } from "./settings";
+import { CHAT_BUTTON_SETTINGS, settings, useSettings } from "./settings";
 
 /**
  * Adds the Images, Videos, Audio and Files tabs of the desktop plugin to Discord's GIF/emoji picker.
@@ -33,6 +34,39 @@ interface Injection {
     kinds: MediaKind[];
     select(kind: MediaKind | null): void;
     injected: boolean;
+    /** The picker's segmented control state, to move its highlight to a MediaVault tab opened from a button. */
+    state?: { state: any; base: number; };
+}
+
+/** MediaVault's kinds in the picker: the ones with a chat bar button setting turned on (images and videos by default). */
+const pickerKinds = (current: Settings): MediaKind[] => (Object.keys(CHAT_BUTTON_SETTINGS) as (keyof typeof CHAT_BUTTON_SETTINGS)[])
+    .filter(kind => current[CHAT_BUTTON_SETTINGS[kind]]);
+
+/** The tab to show when the picker opens, set by a chat bar button. */
+let pendingKind: MediaKind | null = null;
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+/** Selects a tab in the open picker, if any. */
+let openPicker: ((kind: MediaKind) => void) | null = null;
+
+/**
+ * Shows a MediaVault tab in Discord's GIF/emoji picker, opening the picker with `openExpressionPicker` (the emoji
+ * button's own handler) when it is closed. Returns false when the picker tabs are off, so the caller can fall back.
+ */
+export function showInPicker(kind: MediaKind, openExpressionPicker: (() => void) | undefined): boolean {
+    const current = settings();
+    if (!current.pickerTabs || !pickerKinds(current).includes(kind)) return false;
+    const keyboardType = findByProps("getKeyboardType")?.getKeyboardType?.();
+    if (openPicker && (keyboardType === undefined || keyboardType === "expression")) {
+        openPicker(kind);
+        return true;
+    }
+    if (!openExpressionPicker) return false;
+    pendingKind = kind;
+    // Forgotten if the picker does not open, so a later, manual opening shows Discord's tab as usual.
+    if (pendingTimer !== undefined) clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(() => { pendingKind = null; }, 3000);
+    openExpressionPicker();
+    return true;
 }
 /** Set while the wrapper renders the original picker, so the segmented control hook knows it is the picker's. */
 let rendering: Injection | null = null;
@@ -45,9 +79,31 @@ export function patchExpressionPicker(): () => void {
 
     function MediaVaultExpressionPicker(props: any) {
         const tabs = useSettings();
-        const [active, setActive] = useState<MediaKind | null>(null);
-        const kinds = KINDS.filter(kind => kind !== "gif" && tabs[TAB_SETTINGS[kind]]);
+        const [active, setActive] = useState<MediaKind | null>(() => {
+            const kind = pendingKind;
+            pendingKind = null;
+            return kind;
+        });
+        const kinds = pickerKinds(tabs);
+        const segmented = useRef<Injection["state"]>(undefined);
         const injection: Injection = { kinds, select: setActive, injected: false };
+
+        useEffect(() => {
+            const select = (kind: MediaKind) => setActive(kind);
+            openPicker = select;
+            return () => {
+                if (openPicker === select) openPicker = null;
+            };
+        }, []);
+        // A tab opened from a chat bar button: move the segmented control's highlight onto it.
+        useEffect(() => {
+            const control = segmented.current;
+            if (!active || !control) return;
+            const index = control.base + kinds.indexOf(active);
+            try {
+                if (control.state?.activeIndex?.value !== index) control.state?.setActiveIndex?.(index);
+            } catch {}
+        });
         let tree: ReactNode;
         rendering = injection;
         try {
@@ -56,6 +112,7 @@ export function patchExpressionPicker(): () => void {
             rendering = null;
         }
         pickerStatus.injected = injection.injected;
+        if (injection.state) segmented.current = injection.state;
         const kind = active && kinds.includes(active) ? active : null;
         try {
             return decorate(tree as ReactElement, kinds, kind, setActive, injection.injected);
@@ -126,6 +183,7 @@ function extendTabs(args: any[], hook: (...args: any[]) => any) {
     });
     const state = hook(wrapped);
     injection.injected = true;
+    injection.state = { state, base };
     return state;
 }
 

@@ -33,6 +33,8 @@ const fakeReact = {
     cloneElement: (element, props, ...children) => ({ ...element, props: { ...element.props, ...props, children } }),
     useState: initial => [initial, value => stateCalls.push(value)],
     Component: class {},
+    useRef: initial => ({ current: initial }),
+    useEffect: () => {},
     Fragment: "Fragment"
 };
 // Discord's jsx runtime and segmented control hook, as used by the GIF/emoji picker.
@@ -111,7 +113,7 @@ assert.ok(patches.some(p => p.kind === "before" && p.name === "openLazy"), "acti
     const element = jsxRuntime.jsx(ExpressionPicker, { channel: {} });
     assert.notEqual(element.type, ExpressionPicker, "picker wrapped");
     element.type(element.props);
-    assert.equal(pickerState.items.length, 7, "Images, Videos, Audio and Files tabs added");
+    assert.equal(pickerState.items.length, 5, "Images and Videos tabs added (Audio and Files are off by default)");
     pickerState.setActiveIndex(1);
     assert.deepEqual(discordPages, [1], "Discord tabs still work");
     pickerState.setActiveIndex(3);

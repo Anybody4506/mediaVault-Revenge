@@ -17,7 +17,9 @@ export interface Settings {
     hideThumbnail: boolean;
     /** Send on tap. Otherwise the link is inserted in the chat box. */
     alwaysSendInstantly: boolean;
-    /** Chat bar buttons, next to the emoji button, as on desktop. */
+    /** Chat bar buttons next to the emoji button, as on desktop. */
+    chatButtons: boolean;
+    /** Media kinds with a chat bar button and a GIF/emoji picker tab. */
     chatImageButton: boolean;
     chatVideoButton: boolean;
     chatAudioButton: boolean;
@@ -39,6 +41,7 @@ export const DefaultSettings: Settings = {
     hideUnsortedMedias: true,
     hideThumbnail: false,
     alwaysSendInstantly: true,
+    chatButtons: true,
     chatImageButton: true,
     chatVideoButton: true,
     chatAudioButton: false,

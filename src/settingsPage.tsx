@@ -95,7 +95,7 @@ export default function SettingsPage() {
 
         <TableRowGroup title="Behavior">
             {switchRow("alwaysSendInstantly", t("opt.instant"), "Otherwise the link is inserted in the chat box.")}
-            {switchRow("pickerTabs", "Tabs in the GIF/emoji picker", "Images, Videos, Audio and Files tabs next to Emoji, GIF and Sticker. Reopen the picker after changing it.")}
+            {switchRow("pickerTabs", "Tabs in the GIF/emoji picker", "MediaVault tabs next to Emoji, GIF and Sticker, for the kinds chosen below. Reopen the picker after changing it.")}
             {switchRow("hideUnsortedMedias", t("opt.hideUnsorted"))}
             {switchRow("hideThumbnail", t("opt.hideThumb"))}
         </TableRowGroup>
@@ -104,7 +104,8 @@ export default function SettingsPage() {
             {[20, 50, 100].map(value => <TableRadioRow key={value} label={String(value)} value={value} />)}
         </TableRadioGroup>
 
-        <TableRowGroup title="Chat bar buttons">
+        <TableRowGroup title="In the chat (button and picker tab)">
+            {switchRow("chatButtons", "Chat bar buttons", "Next to the emoji button. Each opens the GIF/emoji picker on its tab.")}
             {(Object.keys(CHAT_BUTTON_SETTINGS) as (keyof typeof CHAT_BUTTON_SETTINGS)[]).map(kind => switchRow(CHAT_BUTTON_SETTINGS[kind], t(`tab.${kind}` as Key)))}
         </TableRowGroup>
 

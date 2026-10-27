@@ -12,6 +12,7 @@ import type { Key } from "./i18n";
 import { t } from "./i18n";
 import { KIND_ICONS, openLibrary } from "./library";
 import type { MediaKind } from "./model";
+import { showInPicker } from "./picker";
 import { findInReactTree, patcher } from "./rv";
 import { CHAT_BUTTON_SETTINGS, settings } from "./settings";
 import { icon } from "./ui";
@@ -57,6 +58,9 @@ export function patchChatInput(): () => void {
     };
 }
 
+/** The emoji button's handler, which opens the GIF/emoji picker the way Discord does. */
+let expressionButtonPress: (() => void) | undefined;
+
 // Same elements every render, so they can be found again in cached trees.
 const buttons = (Object.keys(CHAT_BUTTON_SETTINGS) as (keyof typeof CHAT_BUTTON_SETTINGS)[])
     .map(kind => ({ kind, element: <MediaVaultButton key={`mediavault-${kind}`} kind={kind} /> }));
@@ -72,7 +76,10 @@ function insertButton(tree: ReactElement) {
         const index = children.indexOf(element);
         if (index !== -1) children.splice(index, 1);
     }
+    const expression: any = children.find((child: any) => /ExpressionButton/.test(child?.type?.name ?? child?.type?.displayName ?? child?.type?.type?.name ?? ""));
+    expressionButtonPress = typeof expression?.props?.onPress === "function" ? expression.props.onPress : undefined;
     const current = settings();
+    if (!current.chatButtons) return tree;
     children.unshift(...buttons.filter(({ kind }) => current[CHAT_BUTTON_SETTINGS[kind]]).map(({ element }) => element));
     return tree;
 }
@@ -82,7 +89,10 @@ function MediaVaultButton({ kind }: { kind: MediaKind; }) {
     const Icon = icon(...KIND_ICONS[kind]);
     chatButtonStatus.actionButtonFound = !!ChatInputActionButton;
     const label = `MediaVault: ${t(`tab.${kind}` as Key)}`;
-    const onPress = () => openLibrary(currentAccountId(), kind);
+    // The picker opens on this kind's tab, like the desktop buttons; the library sheet is the fallback.
+    const onPress = () => {
+        if (!showInPicker(kind, expressionButtonPress)) openLibrary(currentAccountId(), kind);
+    };
     if (ChatInputActionButton && Icon) return <ChatInputActionButton accessibilityLabel={label} IconComponent={Icon} onPress={onPress} />;
     // Recent Discord versions no longer export ChatInputActionButton: draw a round button the size of the others.
     return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={4} style={styles.button} ref={(view: unknown) => { chatButtonHost.current = view; }}>
