@@ -7,8 +7,10 @@ Port of [MediaVault for Equicord](https://github.com/Anybody4506/mediaVault-Equi
 In Discord: **Settings → Revenge → Plugins → "+" (Install a plugin)**, paste the plugin URL, then confirm the "Hold On!" warning shown for plugins that are not on the official proxy:
 
 ```
-https://raw.githubusercontent.com/Anybody4506/mediaVault-Revenge/main/dist/MediaVault/
+https://anybody4506.github.io/mediaVault-Revenge/MediaVault/
 ```
+
+The plugin is hosted on GitHub Pages, as Revenge recommends: the `GitHub Pages` workflow publishes `dist/` on every push to `main`. The raw link `https://raw.githubusercontent.com/Anybody4506/mediaVault-Revenge/main/dist/MediaVault/` keeps working too.
 
 (Replace it with the address of your own repository if it is different.)
 
