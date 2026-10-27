@@ -18,7 +18,7 @@ import { openFolderOptions, openMediaOptions, promptCreateFolder } from "./optio
 import { TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
 import { Design, SheetFlatList, useSafeAreaInsets, VideoPlayer } from "./rv";
-import { noteThumbnailFailure, previewOf, tenorGif, thumbnailCandidates } from "./thumbs";
+import { noteThumbnailFailure, noteVideoError, previewOf, tenorGif, thumbnailCandidates, videoStatus } from "./thumbs";
 import { EmptyText, hideSheet, icon, openSheet, RenderBoundary } from "./ui";
 import { useFreshUrl } from "./urls";
 
@@ -113,6 +113,13 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
         setSearch("");
     }, [kind]);
     useEffect(() => setPage(0), [kind, folderId, search]);
+    // Another page starts at the top.
+    const list = useRef<any>(null);
+    useEffect(() => {
+        try {
+            list.current?.scrollToOffset?.({ offset: 0, animated: false });
+        } catch {}
+    }, [page]);
     // The open folder may have been deleted from its options.
     useEffect(() => {
         if (folderId && library && !library.categories.some(category => category.id === folderId)) setFolderId(null);
@@ -174,6 +181,7 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
     </View>;
 
     return <List
+        ref={list}
         data={tile > 0 && library && !error ? rows : []}
         keyExtractor={rowKey}
         renderItem={renderRow}
@@ -227,12 +235,12 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
  */
 function Thumbnail({ url, page, size, height = size, fallbackIcon }: { url: string | undefined; page?: string; size: number; height?: number; fallbackIcon: string[]; }) {
     const fresh = useFreshUrl(url);
-    const [failures, setFailures] = useState(0);
+    // The links that failed: a refreshed link (an expired one renewed) is a new candidate, tried right away.
+    const [failed, setFailed] = useState<string[]>([]);
     const candidates = useMemo(() => thumbnailCandidates(fresh), [fresh]);
-    useEffect(() => setFailures(0), [candidates]);
     // undefined while not asked for or not answered yet.
     const [fromPage, setFromPage] = useState<string | null | undefined>(undefined);
-    const needsPage = failures >= candidates.length && !!page;
+    const needsPage = candidates.every(candidate => failed.includes(candidate)) && !!page;
     useEffect(() => {
         if (!needsPage) return;
         let alive = true;
@@ -240,13 +248,13 @@ function Thumbnail({ url, page, size, height = size, fallbackIcon }: { url: stri
         return () => { alive = false; };
     }, [needsPage, page]);
     const all = fromPage && !candidates.includes(fromPage) ? [...candidates, fromPage] : candidates;
-    const source = all[failures];
+    const source = all.find(candidate => !failed.includes(candidate));
     if (!source) {
         if (fresh && (!needsPage || fromPage !== undefined)) noteThumbnailFailure(fresh, candidates[0] ?? null);
         const Icon = icon(...fallbackIcon);
         return <View style={{ width: size, height, alignItems: "center", justifyContent: "center" }}>{Icon && <Icon size="md" />}</View>;
     }
-    return <Image key={source} source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailures(failures + 1)} />;
+    return <Image key={source} source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailed(list => [...list, source])} />;
 }
 
 export const KIND_ICONS: Record<MediaKind, string[]> = {
@@ -279,12 +287,20 @@ function MediaTile({ item, size, visual, playing, onPress, onLongPress }: { item
 function VideoPreview({ url }: { url: string; }) {
     const { animateVideos } = useSettings();
     const fresh = useFreshUrl(url);
+    // Hidden until it plays, so a player that stays black does not cover the still frame.
+    const [ready, setReady] = useState(false);
     const Player = animateVideos ? VideoPlayer() : undefined;
     if (!Player || !fresh) return null;
-    return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <RenderBoundary>
+    videoStatus.renders++;
+    const shown = () => {
+        if (!ready) videoStatus.loads++;
+        setReady(true);
+    };
+    return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: ready ? 1 : 0 }]}>
+        <RenderBoundary onError={error => noteVideoError("render", error)}>
             <Player source={{ uri: fresh }} style={StyleSheet.absoluteFill} resizeMode="cover" repeat muted paused={false}
-                disableFocus playInBackground={false} playWhenInactive={false} hideShutterView controls={false} />
+                disableFocus playInBackground={false} playWhenInactive={false} hideShutterView controls={false}
+                onLoad={shown} onReadyForDisplay={shown} onError={(error: unknown) => noteVideoError("playback", error)} />
         </RenderBoundary>
     </View>;
 }

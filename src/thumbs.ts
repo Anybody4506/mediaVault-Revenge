@@ -97,6 +97,20 @@ export function tenorGif(page: string | undefined): Promise<string | null> {
     return found;
 }
 
+/** What the grid's video players did, for the diagnostic. */
+export const videoStatus = { renders: 0, loads: 0, errors: [] as string[] };
+
+export function noteVideoError(stage: string, error: unknown) {
+    if (videoStatus.errors.length >= 10) return;
+    let text: string;
+    try {
+        text = error instanceof Error ? error.message : JSON.stringify(error)?.slice(0, 300) ?? String(error);
+    } catch {
+        text = String(error);
+    }
+    videoStatus.errors.push(`${stage}: ${text}`);
+}
+
 /** Thumbnails that could not be shown (an icon instead), for the diagnostic. */
 export const thumbnailFailures: { url: string; light: string | null; }[] = [];
 

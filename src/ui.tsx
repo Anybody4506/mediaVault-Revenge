@@ -18,13 +18,13 @@ const brokenIcons = new Set<string>();
 const safeIcons = new Map<string, IconComponent>();
 
 /** Renders `fallback` (nothing by default) instead of children that throw. */
-export class RenderBoundary extends React.Component<{ onError?(): void; fallback?: React.ReactNode; children?: React.ReactNode; }, { failed: boolean; }> {
+export class RenderBoundary extends React.Component<{ onError?(error: unknown): void; fallback?: React.ReactNode; children?: React.ReactNode; }, { failed: boolean; }> {
     state = { failed: false };
     static getDerivedStateFromError() {
         return { failed: true };
     }
-    componentDidCatch() {
-        this.props.onError?.();
+    componentDidCatch(error: unknown) {
+        this.props.onError?.(error);
     }
     render() {
         return this.state.failed ? this.props.fallback ?? null : this.props.children;

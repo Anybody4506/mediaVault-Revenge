@@ -7,7 +7,7 @@ import { chatButtonHost, chatButtonStatus } from "./chatButton";
 import { describe } from "./describe";
 import { pickerStatus } from "./picker";
 import { findByProps, patcher, VideoPlayer, videoViews } from "./rv";
-import { thumbnailFailures } from "./thumbs";
+import { thumbnailFailures, videoStatus } from "./thumbs";
 
 /**
  * Discord's component names change between versions and can only be read on the phone.
@@ -198,7 +198,7 @@ export function collectDiagnostic(): string {
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
         picker: { ...pickerStatus, segmentedModules: segmentedModules() },
-        video: { views: videoViews(), player: describe(VideoPlayer()), modules: videoModules() },
+        video: { views: videoViews(), player: describe(VideoPlayer()), playerProps: Object.keys((VideoPlayer() as any)?.defaultProps ?? (VideoPlayer() as any)?.propTypes ?? {}), status: videoStatus, modules: videoModules().slice(0, 4) },
         // Thumbnails of the grid that ended as an icon: the link shown, and the light version tried first.
         thumbnailFailures,
         actionSheets: sheetKeys,
