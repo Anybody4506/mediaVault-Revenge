@@ -4,6 +4,7 @@
  */
 
 import { chatButtonHost, chatButtonStatus } from "./chatButton";
+import { pickerStatus } from "./picker";
 import { findByProps, patcher } from "./rv";
 
 /**
@@ -162,6 +163,7 @@ export function collectDiagnostic(): string {
     return JSON.stringify({
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
+        picker: pickerStatus,
         actionSheets: sheetKeys,
         portalCalls,
         pickerTree,

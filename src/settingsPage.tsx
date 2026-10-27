@@ -95,6 +95,7 @@ export default function SettingsPage() {
 
         <TableRowGroup title="Behavior">
             {switchRow("alwaysSendInstantly", t("opt.instant"), "Otherwise the link is inserted in the chat box.")}
+            {switchRow("pickerTabs", "Tabs in the GIF/emoji picker", "Images, Videos, Audio and Files tabs next to Emoji, GIF and Sticker. Reopen the picker after changing it.")}
             {switchRow("chatButton", "Chat bar button", "A button next to the emoji button opens the library.")}
             {switchRow("hideUnsortedMedias", t("opt.hideUnsorted"))}
             {switchRow("hideThumbnail", t("opt.hideThumb"))}

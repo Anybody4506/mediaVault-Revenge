@@ -18,6 +18,8 @@ export interface Settings {
     /** Send on tap. Otherwise the link is inserted in the chat box. */
     alwaysSendInstantly: boolean;
     chatButton: boolean;
+    /** Images, Videos, Audio and Files tabs in Discord's GIF/emoji picker. */
+    pickerTabs: boolean;
     maxMediasPerPage: number;
 }
 
@@ -32,6 +34,7 @@ export const DefaultSettings: Settings = {
     hideThumbnail: false,
     alwaysSendInstantly: true,
     chatButton: true,
+    pickerTabs: true,
     maxMediasPerPage: 50
 };
 

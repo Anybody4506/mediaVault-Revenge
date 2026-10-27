@@ -23,7 +23,7 @@ import { EmptyText, hideSheet, icon, openSheet } from "./ui";
 import { useFreshUrl } from "./urls";
 
 export const LIBRARY_SHEET = "MEDIAVAULT_LIBRARY";
-const KINDS: MediaKind[] = ["gif", "image", "video", "audio", "file"];
+export const KINDS: MediaKind[] = ["gif", "image", "video", "audio", "file"];
 const VISUAL = new Set<MediaKind>(["gif", "image", "video"]);
 const GAP = 8;
 
@@ -60,12 +60,35 @@ export function folderPath(library: LibraryData, folderId: string | null): Media
 
 export default function LibrarySheet({ accountId, initialKind }: LibrarySheetProps) {
     const settings = useSettings();
-    const { ActionSheet, BottomSheetTitleHeader, Button, Stack, Text, TextInput } = Design;
-    const Scroller = SheetScrollView() ?? ScrollView;
-    const { bottom } = useSafeAreaInsets();
+    const { ActionSheet, BottomSheetTitleHeader, Text } = Design;
     const kinds = KINDS.filter(kind => settings[TAB_SETTINGS[kind]]);
     const tabs = kinds.length ? kinds : ["gif" as const];
     const [kind, setKind] = useState<MediaKind>(initialKind && tabs.includes(initialKind) ? initialKind : tabs[0]);
+
+    return <ActionSheet scrollable startExpanded>
+        <BottomSheetTitleHeader title={t("grid.title")} />
+        <LibraryBrowser accountId={accountId} kind={kind} onSent={() => hideSheet(LIBRARY_SHEET)} header={<View style={styles.tabs}>
+            {tabs.map(tab => <Pressable key={tab} accessibilityRole="tab" accessibilityState={{ selected: tab === kind }} onPress={() => setKind(tab)} style={[styles.tab, tab === kind && styles.tabActive]}>
+                <Text variant="text-sm/semibold" color={tab === kind ? "text-strong" : "text-muted"}>{t(`tab.${tab}` as Key)}</Text>
+            </Pressable>)}
+        </View>} />
+    </ActionSheet>;
+}
+
+export interface LibraryBrowserProps {
+    accountId: string;
+    kind: MediaKind;
+    /** Called once a media was sent or inserted in the chat box. */
+    onSent(): void;
+    header?: React.ReactNode;
+}
+
+/** Search, folders and the media grid of one tab: the body of the library sheet, and of the GIF/emoji picker tabs. */
+export function LibraryBrowser({ accountId, kind, onSent, header }: LibraryBrowserProps) {
+    const settings = useSettings();
+    const { Button, Stack, Text, TextInput } = Design;
+    const Scroller = SheetScrollView() ?? ScrollView;
+    const { bottom } = useSafeAreaInsets();
     const [folderId, setFolderId] = useState<string | null>(null);
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(0);
@@ -106,44 +129,37 @@ export default function LibrarySheet({ accountId, initialKind }: LibrarySheetPro
 
     const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width);
 
-    return <ActionSheet scrollable startExpanded>
-        <BottomSheetTitleHeader
-            title={t("grid.title")}
-            trailing={<Button size="sm" variant="secondary" text={t("grid.createFolder")} onPress={() => library && promptCreateFolder(accountId, kind, folderId)} />}
-        />
-        <Scroller contentContainerStyle={[styles.content, { paddingBottom: 16 + bottom }]} keyboardShouldPersistTaps="handled">
-            <Stack spacing={12}>
-                <View style={styles.tabs}>
-                    {tabs.map(tab => <Pressable key={tab} accessibilityRole="tab" accessibilityState={{ selected: tab === kind }} onPress={() => setKind(tab)} style={[styles.tab, tab === kind && styles.tabActive]}>
-                        <Text variant="text-sm/semibold" color={tab === kind ? "text-strong" : "text-muted"}>{t(`tab.${tab}` as Key)}</Text>
-                    </Pressable>)}
-                </View>
-                <TextInput size="md" placeholder={t(`search.${kind}` as Key)} value={search} onChange={(value: string) => setSearch(value)} isClearable onClear={() => setSearch("")} />
-                {!query && path.length > 0 && <Pressable accessibilityRole="button" onPress={() => setFolderId(path.at(-2)?.id ?? null)} style={styles.crumb}>
+    return <Scroller contentContainerStyle={[styles.content, { paddingBottom: 16 + bottom }]} keyboardShouldPersistTaps="handled">
+        <Stack spacing={12}>
+            {header}
+            <TextInput size="md" placeholder={t(`search.${kind}` as Key)} value={search} onChange={(value: string) => setSearch(value)} isClearable onClear={() => setSearch("")} />
+            <View style={styles.crumb}>
+                {!query && path.length > 0 ? <Pressable accessibilityRole="button" onPress={() => setFolderId(path.at(-2)?.id ?? null)} style={[styles.crumb, { flex: 1 }]}>
                     <Text variant="text-sm/semibold" color="text-link">{`‹ ${t("back")}`}</Text>
                     <Text variant="text-sm/medium" color="text-muted" lineClamp={1} style={{ flexShrink: 1 }}>{path.map(folder => folder.name).join(" / ")}</Text>
-                </Pressable>}
-                {error ? <EmptyText>{error}</EmptyText>
-                    : !library ? <EmptyText>{t("loading")}</EmptyText>
-                        : !visible.length ? <EmptyText>{query ? t("empty.search") : folderId ? t("m.emptyFolder") : t("m.emptyRoot")}</EmptyText>
-                            : <View onLayout={onLayout} style={styles.grid}>
-                                {tile > 0 && visible.map(entry => "folder" in entry
-                                    ? <FolderTile key={`f-${entry.folder.id}`} folder={entry.folder} library={library} items={items} size={tile} visual={VISUAL.has(kind)} hideThumbnail={settings.hideThumbnail}
-                                        onPress={() => { setSearch(""); setFolderId(entry.folder.id); }}
-                                        onLongPress={() => openFolderOptions({ accountId, folderId: entry.folder.id, kind })} />
-                                    : <MediaTile key={`m-${canonicalUrl(entry.item.url)}`} item={entry.item} size={tile} visual={VISUAL.has(kind)}
-                                        onPress={() => void chooseMedia(entry.item).then(sent => sent && hideSheet(LIBRARY_SHEET))}
-                                        onLongPress={() => openMediaOptions({ accountId, item: entry.item, folderId })} />)}
-                            </View>}
-                {pages > 1 && <View style={styles.pager}>
-                    <Button size="sm" variant="secondary" text={t("page.prev")} disabled={page === 0} onPress={() => setPage(page - 1)} />
-                    <Text variant="text-sm/medium" color="text-muted">{`${page + 1} / ${pages}`}</Text>
-                    <Button size="sm" variant="secondary" text={t("page.next")} disabled={page >= pages - 1} onPress={() => setPage(page + 1)} />
-                </View>}
-                <Text variant="text-xs/medium" color="text-muted" style={{ textAlign: "center" }}>{t("m.hint")}</Text>
-            </Stack>
-        </Scroller>
-    </ActionSheet>;
+                </Pressable> : <View style={{ flex: 1 }} />}
+                <Button size="sm" variant="secondary" text={t("grid.createFolder")} onPress={() => library && promptCreateFolder(accountId, kind, folderId)} />
+            </View>
+            {error ? <EmptyText>{error}</EmptyText>
+                : !library ? <EmptyText>{t("loading")}</EmptyText>
+                    : !visible.length ? <EmptyText>{query ? t("empty.search") : folderId ? t("m.emptyFolder") : t("m.emptyRoot")}</EmptyText>
+                        : <View onLayout={onLayout} style={styles.grid}>
+                            {tile > 0 && visible.map(entry => "folder" in entry
+                                ? <FolderTile key={`f-${entry.folder.id}`} folder={entry.folder} library={library} items={items} size={tile} visual={VISUAL.has(kind)} hideThumbnail={settings.hideThumbnail}
+                                    onPress={() => { setSearch(""); setFolderId(entry.folder.id); }}
+                                    onLongPress={() => openFolderOptions({ accountId, folderId: entry.folder.id, kind })} />
+                                : <MediaTile key={`m-${canonicalUrl(entry.item.url)}`} item={entry.item} size={tile} visual={VISUAL.has(kind)}
+                                    onPress={() => void chooseMedia(entry.item).then(sent => sent && onSent())}
+                                    onLongPress={() => openMediaOptions({ accountId, item: entry.item, folderId })} />)}
+                        </View>}
+            {pages > 1 && <View style={styles.pager}>
+                <Button size="sm" variant="secondary" text={t("page.prev")} disabled={page === 0} onPress={() => setPage(page - 1)} />
+                <Text variant="text-sm/medium" color="text-muted">{`${page + 1} / ${pages}`}</Text>
+                <Button size="sm" variant="secondary" text={t("page.next")} disabled={page >= pages - 1} onPress={() => setPage(page + 1)} />
+            </View>}
+            <Text variant="text-xs/medium" color="text-muted" style={{ textAlign: "center" }}>{t("m.hint")}</Text>
+        </Stack>
+    </Scroller>;
 }
 
 function Thumbnail({ url, size, fallbackIcon }: { url: string | undefined; size: number; fallbackIcon: string[]; }) {

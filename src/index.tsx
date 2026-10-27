@@ -7,6 +7,7 @@ import * as React from "react";
 import { patchChatInput, registerCommand } from "./chatButton";
 import { recordActionSheets, recordPortalKeyboard } from "./diagnostic";
 import { patchMessageActionSheet } from "./message";
+import { patchExpressionPicker } from "./picker";
 import SettingsPage from "./settingsPage";
 import { resetLibraryCache } from "./store";
 import { resetUrlQueue } from "./urls";
@@ -25,6 +26,7 @@ export default {
     onLoad() {
         attempt("Message actions", () => patchMessageActionSheet(error => vendetta.logger.error("[MediaVault] Could not add the message actions", error)));
         attempt("Chat bar button", patchChatInput);
+        attempt("GIF/emoji picker tabs", patchExpressionPicker);
         attempt("/mediavault command", registerCommand);
         attempt("Diagnostic", recordActionSheets);
         attempt("Portal keyboard diagnostic", recordPortalKeyboard);

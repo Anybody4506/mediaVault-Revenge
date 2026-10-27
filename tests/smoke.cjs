@@ -27,10 +27,16 @@ const ActionSheet = function ActionSheet() {};
 const commands = [];
 const storage = {};
 const errors = [];
+const stateCalls = [];
 const fakeReact = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.length > 1 ? children : children[0] } }),
+    cloneElement: (element, props, ...children) => ({ ...element, props: { ...element.props, ...props, children } }),
+    useState: initial => [initial, value => stateCalls.push(value)],
     Fragment: "Fragment"
 };
+// Discord's jsx runtime and segmented control hook, as used by the GIF/emoji picker.
+const jsxRuntime = { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
+const segmented = { useSegmentedControlState: options => ({ items: options.items, options, setActiveIndex: index => options.onPageChange?.(index) }) };
 
 const vendetta = {
     patcher: { before: patch("before"), after: patch("after"), instead: patch("instead") },
@@ -42,6 +48,8 @@ const vendetta = {
         findByProps: (...props) => {
             if (props[0] === "openLazy") return sheets;
             if (props[0] === "ActionSheet") return { ActionSheet };
+            if (props[0] === "jsx") return jsxRuntime;
+            if (props[0] === "useSegmentedControlState") return segmented;
             return undefined;
         }
     },
@@ -88,6 +96,24 @@ assert.ok(patches.some(p => p.kind === "before" && p.name === "openLazy"), "acti
     sheets.openLazy(Promise.resolve(other), "SomethingElse", {});
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(other.default().props.children.length, 0, "other sheets untouched");
+
+    // The GIF/emoji picker gets MediaVault's tabs in its segmented control.
+    const discordPages = [];
+    let pickerState;
+    function ExpressionPicker() {
+        pickerState = segmented.useSegmentedControlState({ items: [{ id: "emoji" }, { id: "gif" }, { id: "sticker" }], onPageChange: index => discordPages.push(index) });
+        return { type: "View", props: { children: [{ type: "View", props: { children: [] } }, { type: "View", props: { children: [] } }] } };
+    }
+    const element = jsxRuntime.jsx(ExpressionPicker, { channel: {} });
+    assert.notEqual(element.type, ExpressionPicker, "picker wrapped");
+    element.type(element.props);
+    assert.equal(pickerState.items.length, 7, "Images, Videos, Audio and Files tabs added");
+    pickerState.setActiveIndex(1);
+    assert.deepEqual(discordPages, [1], "Discord tabs still work");
+    pickerState.setActiveIndex(3);
+    assert.deepEqual(discordPages, [1], "MediaVault tab not passed to Discord");
+    assert.equal(stateCalls.at(-1), "image", "MediaVault tab selected");
+    assert.equal(jsxRuntime.jsx("View", {}).type, "View", "other elements untouched");
 
     plugin.onUnload();
     assert.equal(commands.length, 0, "/mediavault unregistered");
