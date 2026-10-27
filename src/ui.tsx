@@ -17,16 +17,17 @@ type IconComponent = NonNullable<ReturnType<typeof lookupIcon>>;
 const brokenIcons = new Set<string>();
 const safeIcons = new Map<string, IconComponent>();
 
-class IconBoundary extends React.Component<{ onError(): void; children?: React.ReactNode; }, { failed: boolean; }> {
+/** Renders `fallback` (nothing by default) instead of children that throw. */
+export class RenderBoundary extends React.Component<{ onError?(): void; fallback?: React.ReactNode; children?: React.ReactNode; }, { failed: boolean; }> {
     state = { failed: false };
     static getDerivedStateFromError() {
         return { failed: true };
     }
     componentDidCatch() {
-        this.props.onError();
+        this.props.onError?.();
     }
     render() {
-        return this.state.failed ? null : this.props.children;
+        return this.state.failed ? this.props.fallback ?? null : this.props.children;
     }
 }
 
@@ -44,10 +45,10 @@ export function icon(...names: string[]): IconComponent | undefined {
             const name = names.find(candidate => !brokenIcons.has(candidate) && lookupIcon(candidate));
             const Found = name ? lookupIcon(name) : undefined;
             if (!name || !Found) return null;
-            return <IconBoundary key={name} onError={() => {
+            return <RenderBoundary key={name} onError={() => {
                 brokenIcons.add(name);
                 rerender(count => count + 1);
-            }}><Found {...props} /></IconBoundary>;
+            }}><Found {...props} /></RenderBoundary>;
         } as IconComponent;
         safeIcons.set(key, Safe);
     }

@@ -6,7 +6,7 @@
 import { chatButtonHost, chatButtonStatus } from "./chatButton";
 import { describe } from "./describe";
 import { pickerStatus } from "./picker";
-import { findByProps, patcher } from "./rv";
+import { findByProps, patcher, VideoPlayer, videoViews } from "./rv";
 
 /**
  * Discord's component names change between versions and can only be read on the phone.
@@ -180,6 +180,7 @@ export function collectDiagnostic(): string {
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
         picker: { ...pickerStatus, segmentedModules: segmentedModules() },
+        video: { views: videoViews(), player: describe(VideoPlayer()) },
         actionSheets: sheetKeys,
         portalCalls,
         pickerTree,

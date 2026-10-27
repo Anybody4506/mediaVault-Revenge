@@ -17,9 +17,9 @@ import { canonicalUrl, gifView, isVideoUrl } from "./model";
 import { openFolderOptions, openMediaOptions, promptCreateFolder } from "./options";
 import { TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
-import { Design, SheetFlatList, useSafeAreaInsets } from "./rv";
+import { Design, SheetFlatList, useSafeAreaInsets, VideoPlayer } from "./rv";
 import { previewOf, thumbnailSource } from "./thumbs";
-import { EmptyText, hideSheet, icon, openSheet } from "./ui";
+import { EmptyText, hideSheet, icon, openSheet, RenderBoundary } from "./ui";
 import { useFreshUrl } from "./urls";
 
 export const LIBRARY_SHEET = "MEDIAVAULT_LIBRARY";
@@ -173,12 +173,12 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
         keyExtractor={(row: SavedMedia[]) => canonicalUrl(row[0].url)}
         renderItem={renderRow}
         onLayout={onLayout}
-        // Few rows mounted at a time, and the ones scrolled away detached, so off-screen GIFs stop playing.
+        // Few rows mounted at a time: the ones far from the screen are unmounted, so their GIFs stop playing.
+        // (Not removeClippedSubviews: on Android, detached rows can come back with blank images.)
         initialNumToRender={3}
         maxToRenderPerBatch={2}
         updateCellsBatchingPeriod={60}
         windowSize={3}
-        removeClippedSubviews
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: padding, paddingTop: 8, paddingBottom: 16 + bottom }}
         ListFooterComponent={footer || null}
@@ -247,7 +247,25 @@ function MediaTile({ item, size, visual, onPress, onLongPress }: { item: SavedMe
     }
     return <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={onPress} onLongPress={onLongPress} style={[styles.card, { width: size, height: size }]}>
         <Thumbnail url={previewOf(item)} size={size} fallbackIcon={KIND_ICONS[item.kind]} />
+        {item.kind === "video" && <VideoPreview url={item.url} />}
     </Pressable>;
+}
+
+/**
+ * A video playing muted and looping over its still frame, like the GIFs (the list unmounts it once scrolled away).
+ * If Discord has no video player, or it fails, the still frame stays.
+ */
+function VideoPreview({ url }: { url: string; }) {
+    const { animateVideos } = useSettings();
+    const fresh = useFreshUrl(url);
+    const Player = animateVideos ? VideoPlayer() : undefined;
+    if (!Player || !fresh) return null;
+    return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <RenderBoundary>
+            <Player source={{ uri: fresh }} style={StyleSheet.absoluteFill} resizeMode="cover" repeat muted paused={false}
+                disableFocus playInBackground={false} playWhenInactive={false} hideShutterView controls={false} />
+        </RenderBoundary>
+    </View>;
 }
 
 /** Black or white, whichever reads better on a folder color. */

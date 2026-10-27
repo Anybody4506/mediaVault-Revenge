@@ -98,6 +98,7 @@ export default function SettingsPage() {
             {switchRow("alwaysSendInstantly", t("opt.instant"), "Otherwise the link is inserted in the chat box.")}
             {switchRow("hideUnsortedMedias", t("opt.hideUnsorted"))}
             {switchRow("hideThumbnail", t("opt.hideThumb"))}
+            {switchRow("animateVideos", "Animate videos in the grid", "Muted and looping, only while on screen, like GIFs. Uses more data than a still frame.")}
         </TableRowGroup>
 
         <TableRadioGroup title="Maximum number of folders and media per page" value={settings.maxMediasPerPage} onChange={(value: number) => void setSetting("maxMediasPerPage", value)}>

@@ -88,6 +88,26 @@ export const patcher = {
     instead: (name: string, parent: any, hook: (args: any[], original: (...args: any[]) => any) => any): Unpatch => vendetta.patcher.instead(name, parent, hook)
 };
 
+/** Native views a video player can draw with, among the ones this version of Discord ships. */
+export const videoViews = (): string[] => {
+    const { UIManager } = vendetta.metro.common.ReactNative as any;
+    return ["RCTVideo", "ExpoVideoView", "ExpoVideo"].filter(name => {
+        try {
+            return UIManager?.hasViewManagerConfig?.(name) ?? !!UIManager?.getViewManagerConfig?.(name);
+        } catch {
+            return false;
+        }
+    });
+};
+
+/** react-native-video's player, only when its native view is there (rendering it otherwise throws). */
+export const VideoPlayer = () => videoViews().includes("RCTVideo") ? lazy("videoPlayer", () => {
+    const isPlayer = (value: any) => typeof value?.prototype?.seek === "function" && typeof value.prototype.presentFullscreenPlayer === "function";
+    const found = metro().find((m: any) => isPlayer(m) || isPlayer(m?.default) || isPlayer(m?.Video));
+    const player = isPlayer(found) ? found : isPlayer(found?.default) ? found.default : found?.Video;
+    return player ?? metro().findByName("Video");
+}) as AnyComponent | undefined : undefined;
+
 /** Gorhom's list scrolls inside a bottom sheet without fighting its drag gesture. */
 export const SheetFlatList = () => prop("BottomSheetFlatList") as AnyComponent | undefined;
 
