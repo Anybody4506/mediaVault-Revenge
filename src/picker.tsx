@@ -6,19 +6,17 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { currentAccountId } from "./discord";
 import type { Key } from "./i18n";
 import { t } from "./i18n";
-import { FolderTile, LibraryBrowser } from "./library";
-import { openFolderOptions } from "./options";
-import { useLibrary } from "./store";
+import { LibraryBrowser } from "./library";
 import type { MediaKind } from "./model";
 import { describe } from "./describe";
 import { Design, findByProps, findInReactTree, patcher } from "./rv";
 import type { Settings } from "./settings";
-import { CHAT_BUTTON_SETTINGS, settings, useSettings } from "./settings";
+import { PICKER_TAB_SETTINGS, settings, useSettings } from "./settings";
 
 /**
  * Adds the Images, Videos, Audio and Files tabs of the desktop plugin to Discord's GIF/emoji picker.
@@ -41,8 +39,8 @@ interface Injection {
 }
 
 /** MediaVault's kinds in the picker: the ones with a chat bar button setting turned on (images and videos by default). */
-const pickerKinds = (current: Settings): MediaKind[] => (Object.keys(CHAT_BUTTON_SETTINGS) as (keyof typeof CHAT_BUTTON_SETTINGS)[])
-    .filter(kind => current[CHAT_BUTTON_SETTINGS[kind]]);
+const pickerKinds = (current: Settings): MediaKind[] => (Object.keys(PICKER_TAB_SETTINGS) as (keyof typeof PICKER_TAB_SETTINGS)[])
+    .filter(kind => current[PICKER_TAB_SETTINGS[kind]]);
 
 /** The tab to show when the picker opens, set by a chat bar button. */
 let pendingKind: MediaKind | null = null;
@@ -88,18 +86,18 @@ export function patchExpressionPicker(): () => void {
         });
         const kinds = pickerKinds(tabs);
         const segmented = useRef<Injection["state"]>(undefined);
-        // A MediaVault GIF folder opened from Discord's GIF tab.
-        const [gifFolder, setGifFolder] = useState<string | null>(null);
+        // Discord's own GIFs (search, trending) instead of MediaVault in the GIF tab.
+        const [discordGifs, setDiscordGifs] = useState(false);
         const select = (kind: MediaKind | null) => {
             setActive(kind);
-            setGifFolder(null);
+            setDiscordGifs(false);
         };
         const injection: Injection = { kinds, select, injected: false };
 
         useEffect(() => {
             const open = (kind: MediaKind) => {
                 setActive(kind);
-                setGifFolder(null);
+                setDiscordGifs(false);
             };
             openPicker = open;
             return () => {
@@ -126,7 +124,7 @@ export function patchExpressionPicker(): () => void {
         if (injection.state) segmented.current = injection.state;
         const kind = active && kinds.includes(active) ? active : null;
         try {
-            return decorate(tree as ReactElement, { kinds, kind, select, injected: injection.injected, gifFolder, setGifFolder, gifFolders: tabs.gifFolders });
+            return decorate(tree as ReactElement, { kinds, kind, select, injected: injection.injected, discordGifs, setDiscordGifs, gifFolders: tabs.gifFolders });
         } catch (error) {
             pickerStatus.error = error instanceof Error ? error.message : String(error);
             return tree;
@@ -205,14 +203,14 @@ interface Decoration {
     kind: MediaKind | null;
     select(kind: MediaKind | null): void;
     injected: boolean;
-    gifFolder: string | null;
-    setGifFolder(folderId: string | null): void;
+    discordGifs: boolean;
+    setDiscordGifs(shown: boolean): void;
     gifFolders: boolean;
 }
 
 const typeName = (node: any): string => node?.type?.name ?? node?.type?.displayName ?? node?.type?.type?.name ?? "";
 
-function decorate(tree: ReactElement, { kinds, kind, select, injected, gifFolder, setGifFolder, gifFolders }: Decoration): ReactNode {
+function decorate(tree: ReactElement, { kinds, kind, select, injected, discordGifs, setDiscordGifs, gifFolders }: Decoration): ReactNode {
     const root = tree as any;
     const children: ReactNode[] | undefined = Array.isArray(root?.props?.children) ? root.props.children : undefined;
     if (!children) return tree;
@@ -231,14 +229,17 @@ function decorate(tree: ReactElement, { kinds, kind, select, injected, gifFolder
     const content = next[contentIndex] as any;
     pickerStatus.contentNames = [...new Set([content, ...[content?.props?.children].flat()].map(typeName).filter(Boolean))].slice(0, 8);
     const accountId = currentAccountId() ?? "";
-    // Discord's GIF tab: MediaVault's GIF folders on top, as on desktop, and an opened folder in place of the GIFs.
+    // Discord's GIF tab, as on desktop: MediaVault's folders and Discord's favorite GIFs in one grid.
+    // Discord's own GIFs (search, trending) stay one tap away, with a way back.
     const gifTab = !kind && gifFolders && !!content && holds(content, /gif/i) && !holds(content, /Emoji|Sticker/);
-    if (gifTab && gifFolder) {
-        next[contentIndex] = <View key="mediavault-gif-folder" style={[content.props?.style, styles.content]}>
-            <LibraryBrowser accountId={accountId} kind="gif" initialFolderId={gifFolder} back={{ label: "GIF", onPress: () => setGifFolder(null) }} onSent={closePicker} compact />
+    if (gifTab && !discordGifs) {
+        next[contentIndex] = <View key="mediavault-gif" style={[content.props?.style, styles.content]}>
+            <LibraryBrowser accountId={accountId} kind="gif" link={{ label: `${t("m.searchGifs")} ›`, onPress: () => setDiscordGifs(true) }} onSent={closePicker} compact />
         </View>;
     } else if (gifTab) {
-        next[contentIndex] = React.cloneElement(content, undefined, <GifFolderStrip key="mediavault-gif-folders" accountId={accountId} onOpen={setGifFolder} />, ...[content.props?.children].flat());
+        next[contentIndex] = React.cloneElement(content, undefined, <Pressable key="mediavault-gif-back" accessibilityRole="button" onPress={() => setDiscordGifs(false)} style={styles.backLink}>
+            <Design.Text variant="text-sm/semibold" color="text-link">{`‹ ${t("grid.title")}`}</Design.Text>
+        </Pressable>, ...[content.props?.children].flat());
     }
     if (kind) {
         next[contentIndex] = <View key="mediavault-content" style={[content?.props?.style, styles.content]}>
@@ -247,21 +248,6 @@ function decorate(tree: ReactElement, { kinds, kind, select, injected, gifFolder
     }
     if (!injected && kinds.length) next.splice(contentIndex, 0, <FallbackTabs key="mediavault-tabs" kinds={kinds} active={kind} select={select} />);
     return React.cloneElement(tree, undefined, ...next);
-}
-
-/** A row of MediaVault's top-level GIF folders, shown above Discord's GIFs. */
-function GifFolderStrip({ accountId, onOpen }: { accountId: string; onOpen(folderId: string): void; }) {
-    const current = useSettings();
-    const { library } = useLibrary(accountId);
-    if (!library) return null;
-    const folders = library.categories.filter(category => (category.kind === "gif" || category.kind === "all") && !category.parentId);
-    if (!folders.length) return null;
-    const gifs = library.items.filter(item => item.kind === "gif");
-    return <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.strip} contentContainerStyle={styles.stripContent}>
-        {folders.map(folder => <FolderTile key={folder.id} folder={folder} items={gifs} width={132} height={60} visual hideThumbnail={current.hideThumbnail}
-            onPress={() => onOpen(folder.id)}
-            onLongPress={() => openFolderOptions({ accountId, folderId: folder.id, kind: "gif" })} />)}
-    </ScrollView>;
 }
 
 function FallbackTabs({ kinds, active, select }: { kinds: MediaKind[]; active: MediaKind | null; select(kind: MediaKind | null): void; }) {
@@ -281,8 +267,7 @@ function closePicker() {
 
 const styles = StyleSheet.create({
     content: { flex: 1 },
-    strip: { flexGrow: 0 },
-    stripContent: { gap: 8, paddingHorizontal: 12, paddingVertical: 6 },
+    backLink: { paddingHorizontal: 12, paddingVertical: 8 },
     tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 16, paddingVertical: 6 },
     tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "rgba(128,128,128,0.14)" },
     tabActive: { backgroundColor: "rgba(88,101,242,0.35)" }

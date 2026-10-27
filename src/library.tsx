@@ -85,12 +85,12 @@ export interface LibraryBrowserProps {
     compact?: boolean;
     /** Folder open at first. */
     initialFolderId?: string | null;
-    /** A "‹ label" row at the top level, to leave the library (the GIF tab's folders go back to Discord's GIFs). */
-    back?: { label: string; onPress(): void; };
+    /** A link at the top level, beside the search (the GIF tab's link to Discord's own GIFs). */
+    link?: { label: string; onPress(): void; };
 }
 
 /** Search, folders and the media grid of one tab: the body of the library sheet, and of the GIF/emoji picker tabs. */
-export function LibraryBrowser({ accountId, kind, onSent, header, compact, initialFolderId, back }: LibraryBrowserProps) {
+export function LibraryBrowser({ accountId, kind, onSent, header, compact, initialFolderId, link }: LibraryBrowserProps) {
     const settings = useSettings();
     const { Button, Stack, Text, TextInput } = Design;
     const Scroller = SheetScrollView() ?? ScrollView;
@@ -135,7 +135,7 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
     const entries = [...folders.map(folder => ({ folder })), ...shown.map(item => ({ item }))];
     const pages = Math.max(1, Math.ceil(entries.length / perPage));
     const visible = entries.slice(page * perPage, (page + 1) * perPage);
-    const columns = VISUAL.has(kind) ? compact ? 4 : 3 : 2;
+    const columns = VISUAL.has(kind) && !compact ? 3 : 2;
     const tile = width ? Math.floor((width - GAP * (columns - 1)) / columns) : 0;
     const path = library ? folderPath(library, folderId) : [];
 
@@ -154,8 +154,8 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
                     {FolderPlus ? <FolderPlus size="sm" /> : <Text variant="text-lg/bold">+</Text>}
                 </Pressable>
             </View>
-            {!query && !path.length && back && <Pressable accessibilityRole="button" onPress={back.onPress} style={styles.crumb}>
-                <Text variant="text-sm/semibold" color="text-link">{`‹ ${back.label}`}</Text>
+            {!query && !path.length && link && <Pressable accessibilityRole="button" onPress={link.onPress} style={styles.crumb}>
+                <Text variant="text-sm/semibold" color="text-link">{link.label}</Text>
             </Pressable>}
             {!query && path.length > 0 && <Pressable accessibilityRole="button" onPress={() => setFolderId(path.at(-2)?.id ?? null)} style={styles.crumb}>
                 <Text variant="text-sm/semibold" color="text-link">{`‹ ${t("back")}`}</Text>

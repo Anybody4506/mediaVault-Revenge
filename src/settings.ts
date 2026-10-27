@@ -19,8 +19,13 @@ export interface Settings {
     alwaysSendInstantly: boolean;
     /** Chat bar buttons next to the emoji button, as on desktop. */
     chatButtons: boolean;
-    /** MediaVault's GIF folders at the top of Discord's GIF tab. */
+    /** Discord's GIF tab shows MediaVault's folders with Discord's favorite GIFs, as on desktop. */
     gifFolders: boolean;
+    /** MediaVault tabs in Discord's GIF/emoji picker. */
+    pickerImageTab: boolean;
+    pickerVideoTab: boolean;
+    pickerAudioTab: boolean;
+    pickerFileTab: boolean;
     /** Media kinds with a chat bar button and a GIF/emoji picker tab. */
     chatImageButton: boolean;
     chatVideoButton: boolean;
@@ -45,6 +50,10 @@ export const DefaultSettings: Settings = {
     alwaysSendInstantly: true,
     chatButtons: true,
     gifFolders: true,
+    pickerImageTab: true,
+    pickerVideoTab: true,
+    pickerAudioTab: false,
+    pickerFileTab: false,
     chatImageButton: true,
     chatVideoButton: true,
     chatAudioButton: false,
@@ -68,6 +77,14 @@ export const CHAT_BUTTON_SETTINGS = {
     video: "chatVideoButton",
     audio: "chatAudioButton",
     file: "chatFileButton"
+} as const satisfies Partial<Record<MediaKind, keyof Settings>>;
+
+/** Media kinds that can have a tab in Discord's GIF/emoji picker (GIFs live in Discord's own GIF tab). */
+export const PICKER_TAB_SETTINGS = {
+    image: "pickerImageTab",
+    video: "pickerVideoTab",
+    audio: "pickerAudioTab",
+    file: "pickerFileTab"
 } as const satisfies Partial<Record<MediaKind, keyof Settings>>;
 
 interface PluginStorage {

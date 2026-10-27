@@ -13,7 +13,7 @@ import type { Key } from "./i18n";
 import { t } from "./i18n";
 import { openLibrary } from "./library";
 import type { Settings } from "./settings";
-import { CHAT_BUTTON_SETTINGS, setSetting, TAB_SETTINGS, useSettings } from "./settings";
+import { CHAT_BUTTON_SETTINGS, PICKER_TAB_SETTINGS, setSetting, TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
 import { Clipboard, Design } from "./rv";
 import { confirmAction, icon, promptText } from "./ui";
@@ -86,7 +86,7 @@ export default function SettingsPage() {
         </TableRowGroup>
 
         <TableRowGroup title={t("tab.gif")}>
-            {switchRow("gifFolders", "Folders in the GIF tab", "Your MediaVault GIF folders at the top of Discord's GIF tab, as on desktop.")}
+            {switchRow("gifFolders", "MediaVault in the GIF tab", "Discord's GIF tab shows your MediaVault folders and favorite GIFs, as on desktop. Discord's GIF search stays one tap away.")}
             {switchRow("syncNativeGifs", "Sync with Discord's favorite GIFs", "The GIF tab shows Discord's own favorites (synced across devices), and adding a GIF also stars it in Discord.")}
         </TableRowGroup>
 
@@ -96,7 +96,6 @@ export default function SettingsPage() {
 
         <TableRowGroup title="Behavior">
             {switchRow("alwaysSendInstantly", t("opt.instant"), "Otherwise the link is inserted in the chat box.")}
-            {switchRow("pickerTabs", "Tabs in the GIF/emoji picker", "MediaVault tabs next to Emoji, GIF and Sticker, for the kinds chosen below. Reopen the picker after changing it.")}
             {switchRow("hideUnsortedMedias", t("opt.hideUnsorted"))}
             {switchRow("hideThumbnail", t("opt.hideThumb"))}
         </TableRowGroup>
@@ -105,8 +104,13 @@ export default function SettingsPage() {
             {[20, 50, 100].map(value => <TableRadioRow key={value} label={String(value)} value={value} />)}
         </TableRadioGroup>
 
-        <TableRowGroup title="In the chat (button and picker tab)">
-            {switchRow("chatButtons", "Chat bar buttons", "Next to the emoji button. Each opens the GIF/emoji picker on its tab.")}
+        <TableRowGroup title="Tabs in the GIF/emoji picker">
+            {switchRow("pickerTabs", "MediaVault tabs", "Next to Emoji, GIF and Sticker. Reopen the picker after changing them.")}
+            {(Object.keys(PICKER_TAB_SETTINGS) as (keyof typeof PICKER_TAB_SETTINGS)[]).map(kind => switchRow(PICKER_TAB_SETTINGS[kind], t(`tab.${kind}` as Key)))}
+        </TableRowGroup>
+
+        <TableRowGroup title="Chat bar buttons">
+            {switchRow("chatButtons", "Chat bar buttons", "Next to the emoji button. Each opens its tab in the picker, or the library if that tab is off.")}
             {(Object.keys(CHAT_BUTTON_SETTINGS) as (keyof typeof CHAT_BUTTON_SETTINGS)[]).map(kind => switchRow(CHAT_BUTTON_SETTINGS[kind], t(`tab.${kind}` as Key)))}
         </TableRowGroup>
 

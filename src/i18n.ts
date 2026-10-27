@@ -129,6 +129,7 @@ const en = {
     "m.addAll": "Add all media ({count})",
     "m.removed": "Removed from MediaVault favorites.",
     "m.hint": "Tap to send · Long-press for options",
+    "m.searchGifs": "Search Discord GIFs",
     "m.emptyRoot": "No favorites here yet. Long-press a message with media, then “Add to MediaVault”.",
     "m.emptyFolder": "This folder is empty.",
     "m.noChannel": "Open a channel first to send a media.",
@@ -161,7 +162,7 @@ type Dictionary = Partial<Record<Key, string>>;
 
 const fr: Dictionary = {
     "m.open": "Ouvrir MediaVault", "m.add": "Ajouter à MediaVault", "m.remove": "Retirer de MediaVault", "m.addAll": "Ajouter tous les médias ({count})",
-    "m.removed": "Retiré des favoris MediaVault.", "m.hint": "Appui : envoyer · Appui long : options",
+    "m.removed": "Retiré des favoris MediaVault.", "m.hint": "Appui : envoyer · Appui long : options", "m.searchGifs": "Rechercher des GIF Discord",
     "m.emptyRoot": "Aucun favori ici pour l'instant. Appui long sur un message avec un média, puis « Ajouter à MediaVault ».", "m.emptyFolder": "Ce dossier est vide.",
     "m.noChannel": "Ouvrez d'abord un salon pour envoyer un média.", "m.sent": "Envoyé.", "m.inserted": "Lien inséré dans la zone de saisie.",
     "m.toRoot": "Racine (aucun dossier)", "m.moved": "Déplacé.", "m.folderNew": "Nouveau dossier", "m.parentRoot": "À la racine",
