@@ -6,8 +6,8 @@
 import { chatButtonHost, chatButtonStatus } from "./chatButton";
 import { describe } from "./describe";
 import { pickerStatus } from "./picker";
-import { thumbnailFailures } from "./thumbs";
 import { findByProps, patcher, VideoPlayer, videoViews } from "./rv";
+import { thumbnailFailures } from "./thumbs";
 
 /**
  * Discord's component names change between versions and can only be read on the phone.
@@ -149,27 +149,21 @@ function segmentedModules() {
     return found;
 }
 
-/** Modules and native views about video, to find the player Discord uses for videos in the chat. */
+/** Modules that export a video player, to find the one Discord plays its GIF videos with. */
 function videoModules() {
-    const modules: string[] = [];
+    const found: string[] = [];
+    const named = (value: any) => typeof value === "function" ? value.displayName ?? value.name : value?.displayName ?? value?.type?.name ?? value?.render?.name;
     try {
         vendetta.metro.findAll((exports: any) => {
-            if (modules.length < 40 && exports && (typeof exports === "object" || typeof exports === "function")) {
-                const own = typeof exports === "function" ? [exports.displayName ?? exports.name ?? ""] : Object.keys(exports);
-                const keys = own.filter(key => /video|player/i.test(key) && !/Icon$/.test(key));
-                const component = typeof exports?.default === "function" ? exports.default.displayName ?? exports.default.name ?? "" : "";
-                if (/video|player/i.test(component) && !/Icon$/.test(component)) keys.push(`default:${component}`);
-                if (keys.length) modules.push(`${keys.slice(0, 6).join(",")} [${own.slice(0, 6).join(",")}]`);
-            }
+            if (found.length >= 40 || !exports || (typeof exports !== "object" && typeof exports !== "function")) return false;
+            const own = named(exports) ?? named(exports.default);
+            const keys = typeof exports === "object" ? Object.keys(exports).filter(key => /Video|Player/.test(key) && !/Icon$/.test(key)) : [];
+            const ownMatches = typeof own === "string" && /Video|Player/.test(own) && !/Icon$/.test(own);
+            if (keys.length || ownMatches) found.push(`${ownMatches ? own : ""}${keys.length ? ` .${keys.join(",.")}` : ""} [${typeof exports === "object" ? Object.keys(exports).slice(0, 8).join(",") : typeof exports}]`);
             return false;
         });
     } catch {}
-    let views: string[] = [];
-    try {
-        const { UIManager } = vendetta.metro.common.ReactNative as any;
-        views = Object.keys(UIManager?.getConstants?.() ?? UIManager ?? {}).filter(name => /video|player|media/i.test(name));
-    } catch {}
-    return { modules, nativeViews: views };
+    return found;
 }
 
 let stopRecording: (() => void) | null = null;
@@ -204,7 +198,8 @@ export function collectDiagnostic(): string {
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
         picker: { ...pickerStatus, segmentedModules: segmentedModules() },
-        video: { views: videoViews(), player: describe(VideoPlayer()), ...videoModules() },
+        video: { views: videoViews(), player: describe(VideoPlayer()), modules: videoModules() },
+        // Thumbnails of the grid that ended as an icon: the link shown, and the light version tried first.
         thumbnailFailures,
         actionSheets: sheetKeys,
         portalCalls,
