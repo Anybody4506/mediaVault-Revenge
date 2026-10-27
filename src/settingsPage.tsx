@@ -6,6 +6,7 @@
 import * as React from "react";
 import { ScrollView } from "react-native";
 
+import { collectDiagnostic } from "./diagnostic";
 import { clearLibrary, exportLibrary, importFromClipboard, importFromUrl } from "./actions";
 import { currentAccountId, notify } from "./discord";
 import type { Key } from "./i18n";
@@ -102,6 +103,18 @@ export default function SettingsPage() {
         <TableRadioGroup title="Maximum number of folders and media per page" value={settings.maxMediasPerPage} onChange={(value: number) => void setSetting("maxMediasPerPage", value)}>
             {[20, 50, 100].map(value => <TableRadioRow key={value} label={String(value)} value={value} />)}
         </TableRadioGroup>
+
+        <TableRowGroup title="Diagnostic">
+            <TableRow
+                label="Copy diagnostic"
+                subLabel="Copies the Discord component names MediaVault needs (chat bar, GIF/emoji picker), to send to the developer. Open the GIF/emoji picker once before."
+                icon={<Icon names={["BugIcon", "CopyIcon"]} />}
+                onPress={() => {
+                    Clipboard.setString(collectDiagnostic());
+                    notify(t("toast.copied"));
+                }}
+            />
+        </TableRowGroup>
 
         <Text variant="text-sm/medium" color="text-muted">{t("m.unsupported")}</Text>
     </ScrollView>;

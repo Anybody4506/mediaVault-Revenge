@@ -22,6 +22,9 @@ interface ChatInputActionButtonProps {
 const findRightActions = () => vendetta.metro.find((m: any) => m?.type?.displayName === "ChatInputRightActions");
 const findActionButton = (): FC<ChatInputActionButtonProps> | undefined => vendetta.metro.findByName("ChatInputActionButton");
 
+/** Shown in the diagnostic. */
+export const chatButtonStatus = { rightActionsFound: false, tries: 0, rendered: 0, actionButtonFound: false, insertedInto: false };
+
 /**
  * Replaces the desktop chat bar buttons: one button, next to the emoji button, that opens the library.
  * Discord loads the chat bar lazily, so the lookup is retried for a while after startup.
@@ -32,7 +35,9 @@ export function patchChatInput(): () => void {
     let tries = 0;
     const attempt = () => {
         const RightActions = findRightActions();
+        chatButtonStatus.tries = tries + 1;
         if (RightActions) {
+            chatButtonStatus.rightActionsFound = true;
             unpatch = patcher.after("type", RightActions, (_, tree) => insertButton(tree as ReactElement));
             return;
         }
@@ -49,8 +54,10 @@ export function patchChatInput(): () => void {
 const button = <MediaVaultButton key="mediavault" />;
 
 function insertButton(tree: ReactElement) {
+    chatButtonStatus.rendered++;
     const node = findInReactTree(tree, candidate => Array.isArray(candidate?.props?.children)) as { props: { children: ReactNode[]; }; } | undefined;
     if (!node) return tree;
+    chatButtonStatus.insertedInto = true;
     const { children } = node.props;
     const index = children.indexOf(button);
     if (index !== -1) children.splice(index, 1);
@@ -61,6 +68,7 @@ function insertButton(tree: ReactElement) {
 function MediaVaultButton() {
     const ChatInputActionButton = findActionButton();
     const Icon = icon("StarIcon", "FolderIcon", "ImageIcon");
+    chatButtonStatus.actionButtonFound = !!ChatInputActionButton;
     if (!ChatInputActionButton || !Icon) return null;
     return <ChatInputActionButton accessibilityLabel={t("m.open")} IconComponent={Icon} onPress={() => openLibrary(currentAccountId())} />;
 }
