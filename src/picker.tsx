@@ -184,7 +184,8 @@ function extendTabs(args: any[], hook: (...args: any[]) => any) {
         if (index >= 0) injection.select(null);
         return false;
     };
-    const wrapped: Record<string, unknown> = { ...options, items };
+    // Discord spaces the tabs 24 apart; tighter, the seven tabs need less scrolling and the highlight offset shrinks with it.
+    const wrapped: Record<string, unknown> = { ...options, items, itemSpacing: TAB_SPACING };
     // forEach rather than for...of: each wrapper needs its own `key` once the bundle is minified.
     Object.keys(options).forEach(key => {
         if (typeof options[key] !== "function") return;
@@ -207,6 +208,8 @@ interface Decoration {
     setDiscordGifs(shown: boolean): void;
     gifFolders: boolean;
 }
+
+const TAB_SPACING = 8;
 
 const typeName = (node: any): string => node?.type?.name ?? node?.type?.displayName ?? node?.type?.type?.name ?? "";
 

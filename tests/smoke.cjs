@@ -28,6 +28,8 @@ const commands = [];
 const storage = {};
 const errors = [];
 const stateCalls = [];
+const androidToasts = [];
+const discordToasts = [];
 const fakeReact = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.length > 1 ? children : children[0] } }),
     cloneElement: (element, props, ...children) => ({ ...element, props: { ...element.props, ...props, children } }),
@@ -46,7 +48,12 @@ const segmentedReexport = { get useSegmentedControlState() { return segmented.us
 const vendetta = {
     patcher: { before: patch("before"), after: patch("after"), instead: patch("instead") },
     metro: {
-        common: { React: fakeReact, ReactNative: { StyleSheet: { create: s => s } }, clipboard: {} },
+        common: {
+            React: fakeReact,
+            ReactNative: { StyleSheet: { create: s => s }, ToastAndroid: { SHORT: 0, LONG: 1, show: text => androidToasts.push(text) } },
+            clipboard: {},
+            toasts: { open: toast => discordToasts.push(toast) }
+        },
         find: () => undefined,
         findByName: () => undefined,
         findByStoreName: () => undefined,
@@ -120,6 +127,12 @@ assert.ok(patches.some(p => p.kind === "before" && p.name === "openLazy"), "acti
     assert.deepEqual(discordPages, [1], "MediaVault tab not passed to Discord");
     assert.ok(stateCalls.includes("image"), "MediaVault tab selected");
     assert.equal(jsxRuntime.jsx("View", {}).type, "View", "other elements untouched");
+
+    // Revenge's toasts become Android toasts; Discord's own toasts are untouched.
+    vendetta.metro.common.toasts.open({ key: "vd-toast-1", content: "Plugin updated" });
+    vendetta.metro.common.toasts.open({ key: "discord", content: "Copied" });
+    assert.deepEqual(androidToasts, ["Plugin updated"], "Revenge toast redirected");
+    assert.deepEqual(discordToasts.map(toast => toast.key), ["discord"], "Discord toast kept");
 
     plugin.onUnload();
     assert.equal(commands.length, 0, "/mediavault unregistered");
