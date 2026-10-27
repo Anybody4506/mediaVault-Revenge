@@ -17,9 +17,9 @@ import { canonicalUrl, gifView } from "./model";
 import { openFolderOptions, openMediaOptions, promptCreateFolder } from "./options";
 import { TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
-import { Design, SheetFlatList, useSafeAreaInsets, VideoPlayer } from "./rv";
-import { noteThumbnailFailure, noteVideoError, previewOf, tenorGif, thumbnailCandidates, videoStatus } from "./thumbs";
-import { EmptyText, hideSheet, icon, openSheet, RenderBoundary } from "./ui";
+import { Design, SheetFlatList, useSafeAreaInsets } from "./rv";
+import { noteThumbnailFailure, previewOf, tenorGif, thumbnailCandidates } from "./thumbs";
+import { EmptyText, hideSheet, icon, openSheet } from "./ui";
 import { useFreshUrl } from "./urls";
 
 export const LIBRARY_SHEET = "MEDIAVAULT_LIBRARY";
@@ -158,15 +158,10 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
 
     const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width - padding * 2);
     const rowKey = (row: SavedMedia[]) => canonicalUrl(row[0].url);
-    // The rows on screen: only their videos play, phones having few video decoders. null until the list tells.
-    const [onScreen, setOnScreen] = useState<Set<string> | null>(null);
-    const viewability = useRef({ itemVisiblePercentThreshold: 10 }).current;
-    const onViewable = useRef(({ viewableItems }: { viewableItems: { key: string; }[]; }) => setOnScreen(new Set(viewableItems.map(entry => entry.key)))).current;
-
     const FolderPlus = icon("FolderPlusIcon", "FolderIcon");
 
     const renderRow = ({ item: row }: { item: SavedMedia[]; }) => <View style={styles.mediaRow}>
-        {row.map(item => <MediaTile key={`m-${canonicalUrl(item.url)}`} item={item} size={tile} visual={VISUAL.has(kind)} playing={!onScreen || onScreen.has(rowKey(row))}
+        {row.map(item => <MediaTile key={`m-${canonicalUrl(item.url)}`} item={item} size={tile} visual={VISUAL.has(kind)}
             onPress={() => void chooseMedia(item).then(sent => sent && onSent())}
             onLongPress={() => openMediaOptions({ accountId, item, folderId })} />)}
     </View>;
@@ -185,9 +180,6 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
         data={tile > 0 && library && !error ? rows : []}
         keyExtractor={rowKey}
         renderItem={renderRow}
-        extraData={onScreen}
-        onViewableItemsChanged={onViewable}
-        viewabilityConfig={viewability}
         onLayout={onLayout}
         // Few rows mounted at a time: the ones far from the screen are unmounted, so their GIFs stop playing.
         // (Not removeClippedSubviews: on Android, detached rows can come back with blank images.)
@@ -265,7 +257,7 @@ export const KIND_ICONS: Record<MediaKind, string[]> = {
     file: ["PaperIcon", "AttachmentIcon"]
 };
 
-function MediaTile({ item, size, visual, playing, onPress, onLongPress }: { item: SavedMedia; size: number; visual: boolean; playing: boolean; onPress(): void; onLongPress(): void; }) {
+function MediaTile({ item, size, visual, onPress, onLongPress }: { item: SavedMedia; size: number; visual: boolean; onPress(): void; onLongPress(): void; }) {
     const { Text } = Design;
     if (!visual) {
         const Icon = icon(...KIND_ICONS[item.kind]);
@@ -276,33 +268,7 @@ function MediaTile({ item, size, visual, playing, onPress, onLongPress }: { item
     }
     return <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={onPress} onLongPress={onLongPress} style={[styles.card, { width: size, height: size }]}>
         <Thumbnail url={previewOf(item)} page={item.url} size={size} fallbackIcon={KIND_ICONS[item.kind]} />
-        {item.kind === "video" && playing && <VideoPreview url={item.url} />}
     </Pressable>;
-}
-
-/**
- * A video playing muted and looping over its still frame, like the GIFs (the list unmounts it once scrolled away).
- * If Discord has no video player, or it fails, the still frame stays.
- */
-function VideoPreview({ url }: { url: string; }) {
-    const { animateVideos } = useSettings();
-    const fresh = useFreshUrl(url);
-    // Hidden until it plays, so a player that stays black does not cover the still frame.
-    const [ready, setReady] = useState(false);
-    const Player = animateVideos ? VideoPlayer() : undefined;
-    if (!Player || !fresh) return null;
-    videoStatus.renders++;
-    const shown = () => {
-        if (!ready) videoStatus.loads++;
-        setReady(true);
-    };
-    return <View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: ready ? 1 : 0 }]}>
-        <RenderBoundary onError={error => noteVideoError("render", error)}>
-            <Player source={{ uri: fresh }} style={StyleSheet.absoluteFill} resizeMode="cover" repeat muted paused={false}
-                disableFocus playInBackground={false} playWhenInactive={false} hideShutterView controls={false}
-                onLoad={shown} onReadyForDisplay={shown} onError={(error: unknown) => noteVideoError("playback", error)} />
-        </RenderBoundary>
-    </View>;
 }
 
 /** Black or white, whichever reads better on a folder color. */

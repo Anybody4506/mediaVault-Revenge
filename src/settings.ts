@@ -15,8 +15,6 @@ export interface Settings {
     syncNativeGifs: boolean;
     hideUnsortedMedias: boolean;
     hideThumbnail: boolean;
-    /** Videos play muted and looping in the grid, while on screen, instead of a still frame. */
-    animateVideos: boolean;
     /** Send on tap. Otherwise the link is inserted in the chat box. */
     alwaysSendInstantly: boolean;
     /** Chat bar buttons next to the emoji button, as on desktop. */
@@ -49,7 +47,6 @@ export const DefaultSettings: Settings = {
     syncNativeGifs: true,
     hideUnsortedMedias: true,
     hideThumbnail: false,
-    animateVideos: true,
     alwaysSendInstantly: true,
     chatButtons: true,
     gifFolders: true,

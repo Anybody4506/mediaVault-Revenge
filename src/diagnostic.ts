@@ -6,8 +6,8 @@
 import { chatButtonHost, chatButtonStatus } from "./chatButton";
 import { describe } from "./describe";
 import { pickerStatus } from "./picker";
-import { findByProps, patcher, VideoPlayer, videoViews } from "./rv";
-import { thumbnailFailures, videoStatus } from "./thumbs";
+import { findByProps, patcher } from "./rv";
+import { thumbnailFailures } from "./thumbs";
 
 /**
  * Discord's component names change between versions and can only be read on the phone.
@@ -149,23 +149,6 @@ function segmentedModules() {
     return found;
 }
 
-/** Modules that export a video player, to find the one Discord plays its GIF videos with. */
-function videoModules() {
-    const found: string[] = [];
-    const named = (value: any) => typeof value === "function" ? value.displayName ?? value.name : value?.displayName ?? value?.type?.name ?? value?.render?.name;
-    try {
-        vendetta.metro.findAll((exports: any) => {
-            if (found.length >= 40 || !exports || (typeof exports !== "object" && typeof exports !== "function")) return false;
-            const own = named(exports) ?? named(exports.default);
-            const keys = typeof exports === "object" ? Object.keys(exports).filter(key => /Video|Player/.test(key) && !/Icon$/.test(key)) : [];
-            const ownMatches = typeof own === "string" && /Video|Player/.test(own) && !/Icon$/.test(own);
-            if (keys.length || ownMatches) found.push(`${ownMatches ? own : ""}${keys.length ? ` .${keys.join(",.")}` : ""} [${typeof exports === "object" ? Object.keys(exports).slice(0, 8).join(",") : typeof exports}]`);
-            return false;
-        });
-    } catch {}
-    return found;
-}
-
 let stopRecording: (() => void) | null = null;
 
 /** Starts or stops recording what "Copy diagnostic" reports (it patches Discord, so it is off unless asked for). */
@@ -198,7 +181,6 @@ export function collectDiagnostic(): string {
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
         picker: { ...pickerStatus, segmentedModules: segmentedModules() },
-        video: { views: videoViews(), player: describe(VideoPlayer()), playerProps: Object.keys((VideoPlayer() as any)?.defaultProps ?? (VideoPlayer() as any)?.propTypes ?? {}), status: videoStatus, modules: videoModules().slice(0, 4) },
         // Thumbnails of the grid that ended as an icon: the link shown, and the light version tried first.
         thumbnailFailures,
         actionSheets: sheetKeys,
