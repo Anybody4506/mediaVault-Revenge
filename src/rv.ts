@@ -66,8 +66,17 @@ export const lookupIcon = (name: string) => lazy(`icon:${name}`, () => {
 
 export const getAssetId = (name: string): number | undefined => vendetta.ui.assets.getAssetIDByName(name);
 
+/**
+ * Android's native toast. Revenge's `showToast` feeds Discord's toast container an older toast shape,
+ * which crashes recent Discord versions ("Cannot read property 'position' of undefined").
+ */
 export function showToast(text: string, failure = false) {
-    vendetta.ui.toasts.showToast(text, getAssetId(failure ? "CircleXIcon-primary" : "CircleCheckIcon-primary") ?? getAssetId(failure ? "Small" : "Check"));
+    try {
+        const { ToastAndroid } = vendetta.metro.common.ReactNative;
+        ToastAndroid?.show(text, failure ? ToastAndroid.LONG : ToastAndroid.SHORT);
+    } catch (error) {
+        vendetta.logger?.warn?.("MediaVault toast failed", error);
+    }
 }
 
 export const findInReactTree = (tree: unknown, filter: (node: any) => boolean): any => vendetta.utils.findInReactTree(tree, filter);
