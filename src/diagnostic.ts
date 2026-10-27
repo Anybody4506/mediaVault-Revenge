@@ -5,7 +5,7 @@
 
 import { chatButtonHost, chatButtonStatus } from "./chatButton";
 import { describe } from "./describe";
-import { pickerStatus } from "./picker";
+import { pickerStatus, tabBarSnapshot } from "./picker";
 import { findByProps, patcher } from "./rv";
 
 /**
@@ -179,7 +179,7 @@ export function collectDiagnostic(): string {
     return JSON.stringify({
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
-        picker: { ...pickerStatus, segmentedModules: segmentedModules() },
+        picker: { ...pickerStatus, tabBar: tabBarSnapshot(), segmentedModules: segmentedModules() },
         actionSheets: sheetKeys,
         portalCalls,
         pickerTree,

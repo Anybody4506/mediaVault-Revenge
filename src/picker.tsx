@@ -68,6 +68,32 @@ export function showInPicker(kind: MediaKind, openExpressionPicker: (() => void)
     openExpressionPicker();
     return true;
 }
+/** The picker's last segmented control state, measured in the diagnostic to find why its highlight drifts. */
+let liveTabState: any = null;
+
+/** The tab bar's live measurements: spacing, widths and positions of each tab, scrolling. */
+export function tabBarSnapshot(): unknown {
+    const state = liveTabState;
+    if (!state) return null;
+    const read = (shared: any) => {
+        try {
+            return JSON.parse(JSON.stringify(shared?.value ?? null));
+        } catch {
+            return String(shared?.value);
+        }
+    };
+    return {
+        itemSpacing: state.itemSpacing,
+        pageWidth: state.pageWidth,
+        labels: state.items?.map((item: any) => item?.label),
+        activeIndex: read(state.activeIndex),
+        itemDimensions: read(state.itemDimensions),
+        scrollOffset: read(state.scrollOffset),
+        scrollOverflow: read(state.scrollOverflow),
+        scrollTarget: read(state.scrollTarget)
+    };
+}
+
 /** Set while the wrapper renders the original picker, so the segmented control hook knows it is the picker's. */
 let rendering: Injection | null = null;
 
@@ -159,7 +185,10 @@ export function patchExpressionPicker(): () => void {
     });
 
     // Reverse order, so nested patches of the same hook are undone cleanly.
-    return () => unpatches.reverse().forEach(unpatch => unpatch());
+    return () => {
+        unpatches.reverse().forEach(unpatch => unpatch());
+        liveTabState = null;
+    };
 }
 
 /** Adds MediaVault's tabs to the picker's segmented control (Emoji / GIF / Sticker). */
@@ -202,6 +231,7 @@ function extendTabs(args: any[], hook: (...args: any[]) => any) {
     }
     injection.injected = true;
     injection.state = { state, base };
+    liveTabState = state;
     pickerStatus.tabs = items.map(item => String(item?.id ?? item?.label));
     return state;
 }
@@ -270,10 +300,25 @@ function FallbackTabs({ kinds, active, select }: { kinds: MediaKind[]; active: M
     </View>;
 }
 
+/**
+ * Closing the portal keyboard alone leaves its space reserved under the chat bar (the keyboard type stays
+ * "expression"): Discord also switches back to the system keyboard and dismisses it, as after sending a GIF.
+ */
 function closePicker() {
-    try {
-        findByProps("closePortalKeyboard")?.closePortalKeyboard();
-    } catch {}
+    const steps = [
+        () => findByProps("closePortalKeyboard")?.closePortalKeyboard(),
+        () => findByProps("setKeyboardType")?.setKeyboardType({ type: "system" }),
+        () => {
+            const keyboard = findByProps("dismissKeyboard") ?? findByProps("clearCurrentFocusAndDismissKeyboard");
+            (keyboard?.dismissKeyboard ?? keyboard?.clearCurrentFocusAndDismissKeyboard)?.();
+        },
+        () => vendetta.metro.common.ReactNative.Keyboard?.dismiss()
+    ];
+    steps.forEach(step => {
+        try {
+            step();
+        } catch {}
+    });
 }
 
 const styles = StyleSheet.create({
