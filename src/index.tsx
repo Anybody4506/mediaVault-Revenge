@@ -8,7 +8,6 @@ import { patchChatInput, registerCommand } from "./chatButton";
 import { setDiagnostic } from "./diagnostic";
 import { patchMessageActionSheet } from "./message";
 import { patchExpressionPicker } from "./picker";
-import { patchRevengeToasts } from "./rv";
 import { settings } from "./settings";
 import SettingsPage from "./settingsPage";
 import { resetLibraryCache } from "./store";
@@ -30,7 +29,6 @@ export default {
         attempt("Chat bar button", patchChatInput);
         attempt("GIF/emoji picker tabs", patchExpressionPicker);
         attempt("/mediavault command", registerCommand);
-        attempt("Revenge toasts", patchRevengeToasts);
         attempt("Diagnostic", () => {
             setDiagnostic(settings().diagnostic);
             return () => setDiagnostic(false);

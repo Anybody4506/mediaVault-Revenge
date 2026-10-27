@@ -79,21 +79,6 @@ export function showToast(text: string, failure = false) {
     }
 }
 
-/**
- * Revenge's own toasts ("plugin updated"...) use the same outdated shape and crash Discord's toast container.
- * Its toasts have a "vd-toast-" key: they are shown as Android toasts instead, Discord's own toasts are left alone.
- */
-export function patchRevengeToasts(): () => void {
-    const toasts = vendetta.metro.common.toasts ?? findByProps("open", "close");
-    if (typeof toasts?.open !== "function") return () => {};
-    return patcher.instead("open", toasts, (args, open) => {
-        const [toast] = args as [{ key?: unknown; content?: unknown; } | undefined];
-        if (typeof toast?.key !== "string" || !toast.key.startsWith("vd-toast-")) return open(...args);
-        showToast(typeof toast.content === "string" ? toast.content : String(toast.content ?? ""));
-        return undefined;
-    });
-}
-
 export const findInReactTree = (tree: unknown, filter: (node: any) => boolean): any => vendetta.utils.findInReactTree(tree, filter);
 
 type Unpatch = () => void;

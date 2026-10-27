@@ -171,7 +171,9 @@ function extendTabs(args: any[], hook: (...args: any[]) => any) {
     rendering = null; // Only the picker's own segmented control.
     pickerStatus.segmentedOptions = Object.keys(options);
     const base = options.items.length;
-    const items = [...options.items, ...injection.kinds.map(kind => ({ id: `mediavault-${kind}`, label: t(`tab.${kind}` as Key), page: null }))];
+    // "Autocollants" and other long translations of Sticker are shortened, so the seven tabs fit without scrolling.
+    const discordItems = options.items.map((item: any) => item?.id === "sticker" ? { ...item, label: "Sticker" } : item);
+    const items = [...discordItems, ...injection.kinds.map(kind => ({ id: `mediavault-${kind}`, label: t(`tab.${kind}` as Key), page: null }))];
     const indexOf = (value: unknown) => typeof value === "number" ? value
         : items.findIndex(item => item === value || item.id === value || (value as any)?.id === item.id);
     // A tap on a MediaVault tab selects it; a tap on Discord's tabs leaves MediaVault and goes on as usual.
@@ -184,7 +186,6 @@ function extendTabs(args: any[], hook: (...args: any[]) => any) {
         if (index >= 0) injection.select(null);
         return false;
     };
-    // Discord spaces the tabs 24 apart; tighter, the seven tabs need less scrolling and the highlight offset shrinks with it.
     const wrapped: Record<string, unknown> = { ...options, items, itemSpacing: TAB_SPACING };
     // forEach rather than for...of: each wrapper needs its own `key` once the bundle is minified.
     Object.keys(options).forEach(key => {
@@ -192,6 +193,13 @@ function extendTabs(args: any[], hook: (...args: any[]) => any) {
         wrapped[key] = (...callArgs: unknown[]) => handles(callArgs[0]) ? undefined : options[key](...callArgs);
     });
     const state = hook(wrapped);
+    // Discord ignores the option and spaces all the tabs 24 apart: the segmented control reads the spacing from the
+    // state, so it is set there, for Discord's tabs as well as MediaVault's.
+    if (state && typeof state === "object" && "itemSpacing" in state) {
+        try {
+            state.itemSpacing = TAB_SPACING;
+        } catch {}
+    }
     injection.injected = true;
     injection.state = { state, base };
     pickerStatus.tabs = items.map(item => String(item?.id ?? item?.label));
