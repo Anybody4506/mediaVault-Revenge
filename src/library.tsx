@@ -13,12 +13,12 @@ import { notify, useNativeGifs } from "./discord";
 import type { Key } from "./i18n";
 import { t } from "./i18n";
 import type { LibraryData, MediaCategory, MediaKind, SavedMedia } from "./model";
-import { canonicalUrl, gifView, isVideoUrl } from "./model";
+import { canonicalUrl, gifView } from "./model";
 import { openFolderOptions, openMediaOptions, promptCreateFolder } from "./options";
 import { TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
 import { Design, SheetFlatList, useSafeAreaInsets, VideoPlayer } from "./rv";
-import { noteThumbnailFailure, previewOf, thumbnailSource } from "./thumbs";
+import { noteThumbnailFailure, previewOf, tenorGif, thumbnailCandidates } from "./thumbs";
 import { EmptyText, hideSheet, icon, openSheet, RenderBoundary } from "./ui";
 import { useFreshUrl } from "./urls";
 
@@ -150,11 +150,16 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
     }, [visible, columns]);
 
     const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width - padding * 2);
+    const rowKey = (row: SavedMedia[]) => canonicalUrl(row[0].url);
+    // The rows on screen: only their videos play, phones having few video decoders. null until the list tells.
+    const [onScreen, setOnScreen] = useState<Set<string> | null>(null);
+    const viewability = useRef({ itemVisiblePercentThreshold: 10 }).current;
+    const onViewable = useRef(({ viewableItems }: { viewableItems: { key: string; }[]; }) => setOnScreen(new Set(viewableItems.map(entry => entry.key)))).current;
 
     const FolderPlus = icon("FolderPlusIcon", "FolderIcon");
 
     const renderRow = ({ item: row }: { item: SavedMedia[]; }) => <View style={styles.mediaRow}>
-        {row.map(item => <MediaTile key={`m-${canonicalUrl(item.url)}`} item={item} size={tile} visual={VISUAL.has(kind)}
+        {row.map(item => <MediaTile key={`m-${canonicalUrl(item.url)}`} item={item} size={tile} visual={VISUAL.has(kind)} playing={!onScreen || onScreen.has(rowKey(row))}
             onPress={() => void chooseMedia(item).then(sent => sent && onSent())}
             onLongPress={() => openMediaOptions({ accountId, item, folderId })} />)}
     </View>;
@@ -170,8 +175,11 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
 
     return <List
         data={tile > 0 && library && !error ? rows : []}
-        keyExtractor={(row: SavedMedia[]) => canonicalUrl(row[0].url)}
+        keyExtractor={rowKey}
         renderItem={renderRow}
+        extraData={onScreen}
+        onViewableItemsChanged={onViewable}
+        viewabilityConfig={viewability}
         onLayout={onLayout}
         // Few rows mounted at a time: the ones far from the screen are unmounted, so their GIFs stop playing.
         // (Not removeClippedSubviews: on Android, detached rows can come back with blank images.)
@@ -213,20 +221,32 @@ export function LibraryBrowser({ accountId, kind, onSent, header, compact, initi
     />;
 }
 
-function Thumbnail({ url, size, height = size, fallbackIcon }: { url: string | undefined; size: number; height?: number; fallbackIcon: string[]; }) {
+/**
+ * The candidates of `thumbnailCandidates` one after the other, then the GIF of the Tenor page `page` when they all
+ * failed (old Tenor links only serve a video), then an icon.
+ */
+function Thumbnail({ url, page, size, height = size, fallbackIcon }: { url: string | undefined; page?: string; size: number; height?: number; fallbackIcon: string[]; }) {
     const fresh = useFreshUrl(url);
-    // 0: the light thumbnail, 1: the file itself when the thumbnail fails, 2: an icon.
     const [failures, setFailures] = useState(0);
-    const light = thumbnailSource(fresh);
-    useEffect(() => setFailures(0), [light]);
-    const original = fresh && !isVideoUrl(fresh) && fresh !== light ? fresh : null;
-    const source = failures === 0 ? light : failures === 1 ? original : null;
+    const candidates = useMemo(() => thumbnailCandidates(fresh), [fresh]);
+    useEffect(() => setFailures(0), [candidates]);
+    // undefined while not asked for or not answered yet.
+    const [fromPage, setFromPage] = useState<string | null | undefined>(undefined);
+    const needsPage = failures >= candidates.length && !!page;
+    useEffect(() => {
+        if (!needsPage) return;
+        let alive = true;
+        void tenorGif(page).then(gif => { if (alive) setFromPage(gif); });
+        return () => { alive = false; };
+    }, [needsPage, page]);
+    const all = fromPage && !candidates.includes(fromPage) ? [...candidates, fromPage] : candidates;
+    const source = all[failures];
     if (!source) {
-        if (fresh) noteThumbnailFailure(fresh, light);
+        if (fresh && (!needsPage || fromPage !== undefined)) noteThumbnailFailure(fresh, candidates[0] ?? null);
         const Icon = icon(...fallbackIcon);
         return <View style={{ width: size, height, alignItems: "center", justifyContent: "center" }}>{Icon && <Icon size="md" />}</View>;
     }
-    return <Image source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailures(failures + (failures === 0 && !original ? 2 : 1))} />;
+    return <Image key={source} source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailures(failures + 1)} />;
 }
 
 export const KIND_ICONS: Record<MediaKind, string[]> = {
@@ -237,7 +257,7 @@ export const KIND_ICONS: Record<MediaKind, string[]> = {
     file: ["PaperIcon", "AttachmentIcon"]
 };
 
-function MediaTile({ item, size, visual, onPress, onLongPress }: { item: SavedMedia; size: number; visual: boolean; onPress(): void; onLongPress(): void; }) {
+function MediaTile({ item, size, visual, playing, onPress, onLongPress }: { item: SavedMedia; size: number; visual: boolean; playing: boolean; onPress(): void; onLongPress(): void; }) {
     const { Text } = Design;
     if (!visual) {
         const Icon = icon(...KIND_ICONS[item.kind]);
@@ -247,8 +267,8 @@ function MediaTile({ item, size, visual, onPress, onLongPress }: { item: SavedMe
         </Pressable>;
     }
     return <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={onPress} onLongPress={onLongPress} style={[styles.card, { width: size, height: size }]}>
-        <Thumbnail url={previewOf(item)} size={size} fallbackIcon={KIND_ICONS[item.kind]} />
-        {item.kind === "video" && <VideoPreview url={item.url} />}
+        <Thumbnail url={previewOf(item)} page={item.url} size={size} fallbackIcon={KIND_ICONS[item.kind]} />
+        {item.kind === "video" && playing && <VideoPreview url={item.url} />}
     </Pressable>;
 }
 
@@ -287,7 +307,7 @@ export function FolderTile({ folder, items, width, height, visual, hideThumbnail
     const thumbnail = hideThumbnail || !visual ? undefined : folder.thumbnail ?? (first && previewOf(first));
     return <Pressable accessibilityRole="button" accessibilityLabel={t("folder.openAria", { name: folder.name })} onPress={onPress} onLongPress={onLongPress}
         style={[styles.folder, { width, height, backgroundColor: color }]}>
-        {thumbnail && <View style={StyleSheet.absoluteFill}><Thumbnail url={thumbnail} size={width} height={height} fallbackIcon={["FolderIcon"]} /></View>}
+        {thumbnail && <View style={StyleSheet.absoluteFill}><Thumbnail url={thumbnail} page={folder.thumbnail ? undefined : first?.url} size={width} height={height} fallbackIcon={["FolderIcon"]} /></View>}
         {thumbnail && <View style={[StyleSheet.absoluteFill, styles.folderFade]} />}
         <Text variant="text-md/bold" lineClamp={2} style={[styles.folderName, { color: thumbnail ? "#ffffff" : readableOn(color) }, !thumbnail && styles.noShadow]}>{folder.name}</Text>
     </Pressable>;
