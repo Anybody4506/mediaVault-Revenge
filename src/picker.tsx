@@ -6,7 +6,7 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { currentAccountId } from "./discord";
 import type { Key } from "./i18n";
@@ -22,20 +22,18 @@ import { PICKER_TAB_SETTINGS, settings, useSettings } from "./settings";
  * Adds the Images, Videos, Audio and Files tabs of the desktop plugin to Discord's GIF/emoji picker.
  *
  * The picker (`ExpressionPicker`) is not exported, so it is swapped for a wrapper where React elements are created
- * (the jsx runtime). The wrapper renders it, adds MediaVault's tabs to its segmented control
- * (Emoji / GIF / Sticker), and shows the MediaVault grid in place of the picker's content while one of them is active.
- * If the segmented control cannot be extended, a row of MediaVault tabs is shown below it instead.
+ * (the jsx runtime). The wrapper renders it and replaces its segmented control (Emoji / GIF / Sticker) with a tab bar
+ * of its own holding Discord's tabs and MediaVault's: Discord's control spaces and highlights its tabs from
+ * measurements that extra tabs throw off. The MediaVault grid replaces the picker's content while one of its tabs is
+ * active. If the segmented control is not found, a row of MediaVault tabs is shown below it instead.
  */
 
 /** Shown in the diagnostic. */
 export const pickerStatus = { wrapped: 0, segmentedHook: false, injected: false, segmentedOptions: [] as string[], contentFound: false, contentNames: [] as string[], tabs: [] as string[], error: "", hookCalls: [] as unknown[], segmentedState: null as unknown };
 
 interface Injection {
-    kinds: MediaKind[];
-    select(kind: MediaKind | null): void;
-    injected: boolean;
-    /** The picker's segmented control state, to move its highlight to a MediaVault tab opened from a button. */
-    state?: { state: any; base: number; };
+    /** The picker's segmented control: its state (active page, `setActiveIndex`) and Discord's tabs. */
+    discord?: { state: any; items: any[]; };
 }
 
 /** MediaVault's kinds in the picker: the ones with a chat bar button setting turned on (images and videos by default). */
@@ -68,32 +66,6 @@ export function showInPicker(kind: MediaKind, openExpressionPicker: (() => void)
     openExpressionPicker();
     return true;
 }
-/** The picker's last segmented control state, measured in the diagnostic to find why its highlight drifts. */
-let liveTabState: any = null;
-
-/** The tab bar's live measurements: spacing, widths and positions of each tab, scrolling. */
-export function tabBarSnapshot(): unknown {
-    const state = liveTabState;
-    if (!state) return null;
-    const read = (shared: any) => {
-        try {
-            return JSON.parse(JSON.stringify(shared?.value ?? null));
-        } catch {
-            return String(shared?.value);
-        }
-    };
-    return {
-        itemSpacing: state.itemSpacing,
-        pageWidth: state.pageWidth,
-        labels: state.items?.map((item: any) => item?.label),
-        activeIndex: read(state.activeIndex),
-        itemDimensions: read(state.itemDimensions),
-        scrollOffset: read(state.scrollOffset),
-        scrollOverflow: read(state.scrollOverflow),
-        scrollTarget: read(state.scrollTarget)
-    };
-}
-
 /** Set while the wrapper renders the original picker, so the segmented control hook knows it is the picker's. */
 let rendering: Injection | null = null;
 
@@ -111,14 +83,13 @@ export function patchExpressionPicker(): () => void {
             return kind;
         });
         const kinds = pickerKinds(tabs);
-        const segmented = useRef<Injection["state"]>(undefined);
         // Discord's own GIFs (search, trending) instead of MediaVault in the GIF tab.
         const [discordGifs, setDiscordGifs] = useState(false);
         const select = (kind: MediaKind | null) => {
             setActive(kind);
             setDiscordGifs(false);
         };
-        const injection: Injection = { kinds, select, injected: false };
+        const injection: Injection = {};
 
         useEffect(() => {
             const open = (kind: MediaKind) => {
@@ -130,15 +101,6 @@ export function patchExpressionPicker(): () => void {
                 if (openPicker === open) openPicker = null;
             };
         }, []);
-        // A tab opened from a chat bar button: move the segmented control's highlight onto it.
-        useEffect(() => {
-            const control = segmented.current;
-            if (!active || !control) return;
-            const index = control.base + kinds.indexOf(active);
-            try {
-                if (control.state?.activeIndex?.value !== index) control.state?.setActiveIndex?.(index);
-            } catch {}
-        });
         let tree: ReactNode;
         rendering = injection;
         try {
@@ -146,11 +108,9 @@ export function patchExpressionPicker(): () => void {
         } finally {
             rendering = null;
         }
-        pickerStatus.injected = injection.injected;
-        if (injection.state) segmented.current = injection.state;
         const kind = active && kinds.includes(active) ? active : null;
         try {
-            return decorate(tree as ReactElement, { kinds, kind, select, injected: injection.injected, discordGifs, setDiscordGifs, gifFolders: tabs.gifFolders });
+            return decorate(tree as ReactElement, { kinds, kind, select, discord: injection.discord, discordGifs, setDiscordGifs, gifFolders: tabs.gifFolders });
         } catch (error) {
             pickerStatus.error = error instanceof Error ? error.message : String(error);
             return tree;
@@ -177,7 +137,7 @@ export function patchExpressionPicker(): () => void {
     const modules: any[] = vendetta.metro.findByPropsAll?.("useSegmentedControlState") ?? [findByProps("useSegmentedControlState")].filter(Boolean);
     modules.forEach(module => {
         try {
-            unpatches.push(patcher.instead("useSegmentedControlState", module, extendTabs));
+            unpatches.push(patcher.instead("useSegmentedControlState", module, recordTabs));
             pickerStatus.segmentedHook = true;
         } catch {
             // Re-exports defined as read-only getters cannot be patched; patching the original module covers them.
@@ -185,54 +145,20 @@ export function patchExpressionPicker(): () => void {
     });
 
     // Reverse order, so nested patches of the same hook are undone cleanly.
-    return () => {
-        unpatches.reverse().forEach(unpatch => unpatch());
-        liveTabState = null;
-    };
+    return () => unpatches.reverse().forEach(unpatch => unpatch());
 }
 
-/** Adds MediaVault's tabs to the picker's segmented control (Emoji / GIF / Sticker). */
-function extendTabs(args: any[], hook: (...args: any[]) => any) {
+/** Records the picker's segmented control (Emoji / GIF / Sticker), which the tab bar drives. */
+function recordTabs(args: any[], hook: (...args: any[]) => any) {
     const injection = rendering;
     const [options] = args as [any];
     if (injection && pickerStatus.hookCalls.length < 4) pickerStatus.hookCalls.push(describe(args));
-    if (!injection || !Array.isArray(options?.items) || !injection.kinds.length) return hook(...args);
-    rendering = null; // Only the picker's own segmented control.
-    pickerStatus.segmentedOptions = Object.keys(options);
-    const base = options.items.length;
-    // "Autocollants" and other long translations of Sticker are shortened, so the seven tabs fit without scrolling.
-    const discordItems = options.items.map((item: any) => item?.id === "sticker" ? { ...item, label: "Sticker" } : item);
-    const items = [...discordItems, ...injection.kinds.map(kind => ({ id: `mediavault-${kind}`, label: t(`tab.${kind}` as Key), page: null }))];
-    const indexOf = (value: unknown) => typeof value === "number" ? value
-        : items.findIndex(item => item === value || item.id === value || (value as any)?.id === item.id);
-    // A tap on a MediaVault tab selects it; a tap on Discord's tabs leaves MediaVault and goes on as usual.
-    const handles = (value: unknown) => {
-        const index = indexOf(value);
-        if (index >= base) {
-            injection.select(injection.kinds[index - base]);
-            return true;
-        }
-        if (index >= 0) injection.select(null);
-        return false;
-    };
-    const wrapped: Record<string, unknown> = { ...options, items, itemSpacing: TAB_SPACING };
-    // forEach rather than for...of: each wrapper needs its own `key` once the bundle is minified.
-    Object.keys(options).forEach(key => {
-        if (typeof options[key] !== "function") return;
-        wrapped[key] = (...callArgs: unknown[]) => handles(callArgs[0]) ? undefined : options[key](...callArgs);
-    });
-    const state = hook(wrapped);
-    // Discord ignores the option and spaces all the tabs 24 apart: the segmented control reads the spacing from the
-    // state, so it is set there, for Discord's tabs as well as MediaVault's.
-    if (state && typeof state === "object" && "itemSpacing" in state) {
-        try {
-            state.itemSpacing = TAB_SPACING;
-        } catch {}
+    const state = hook(...args);
+    if (injection && Array.isArray(options?.items)) {
+        rendering = null; // Only the picker's own segmented control.
+        pickerStatus.segmentedOptions = Object.keys(options);
+        injection.discord = { state, items: options.items };
     }
-    injection.injected = true;
-    injection.state = { state, base };
-    liveTabState = state;
-    pickerStatus.tabs = items.map(item => String(item?.id ?? item?.label));
     return state;
 }
 
@@ -241,17 +167,15 @@ interface Decoration {
     kinds: MediaKind[];
     kind: MediaKind | null;
     select(kind: MediaKind | null): void;
-    injected: boolean;
+    discord: Injection["discord"];
     discordGifs: boolean;
     setDiscordGifs(shown: boolean): void;
     gifFolders: boolean;
 }
 
-const TAB_SPACING = 8;
-
 const typeName = (node: any): string => node?.type?.name ?? node?.type?.displayName ?? node?.type?.type?.name ?? "";
 
-function decorate(tree: ReactElement, { kinds, kind, select, injected, discordGifs, setDiscordGifs, gifFolders }: Decoration): ReactNode {
+function decorate(tree: ReactElement, { kinds, kind, select, discord, discordGifs, setDiscordGifs, gifFolders }: Decoration): ReactNode {
     const root = tree as any;
     const children: ReactNode[] | undefined = Array.isArray(root?.props?.children) ? root.props.children : undefined;
     if (!children) return tree;
@@ -287,8 +211,108 @@ function decorate(tree: ReactElement, { kinds, kind, select, injected, discordGi
             <LibraryBrowser accountId={currentAccountId() ?? ""} kind={kind} onSent={closePicker} compact />
         </View>;
     }
-    if (!injected && kinds.length) next.splice(contentIndex, 0, <FallbackTabs key="mediavault-tabs" kinds={kinds} active={kind} select={select} />);
-    return React.cloneElement(tree, undefined, ...next);
+    // Discord's segmented control gives way to MediaVault's tab bar.
+    let replaced = false;
+    const withBar: ReactNode[] = discord && kinds.length ? replaceInTree(next, node => {
+        if (replaced || !node?.props?.state) return false;
+        return node.props.state === discord.state || /SegmentedControl$/.test(typeName(node));
+    }, () => {
+        replaced = true;
+        return <TabBar key="mediavault-tab-bar" state={discord.state} items={discord.items} kinds={kinds} active={kind} select={select} />;
+    }) : next;
+    pickerStatus.injected = replaced;
+    pickerStatus.tabs = replaced ? [...discord!.items.map(item => String(discordLabel(item))), ...kinds] : [];
+    if (!replaced && kinds.length) withBar.splice(contentIndex, 0, <FallbackTabs key="mediavault-tabs" kinds={kinds} active={kind} select={select} />);
+    return React.cloneElement(tree, undefined, ...withBar);
+}
+
+/** A copy of `node` (an element or an array of them) where the first descendant matching `match` is replaced. */
+function replaceInTree(node: any, match: (candidate: any) => boolean, make: () => ReactNode): any {
+    if (Array.isArray(node)) {
+        let changed = false;
+        const next = node.map(child => {
+            const result = replaceInTree(child, match, make);
+            if (result !== child) changed = true;
+            return result;
+        });
+        return changed ? next : node;
+    }
+    if (!node || typeof node !== "object" || !node.props) return node;
+    if (match(node)) return make();
+    const { children } = node.props;
+    if (children == null || typeof children !== "object") return node;
+    const next = replaceInTree(children, match, make);
+    return next === children ? node : React.cloneElement(node, undefined, ...(Array.isArray(next) ? next : [next]));
+}
+
+const readShared = (shared: any): unknown => {
+    try {
+        return shared?.value;
+    } catch {
+        return undefined;
+    }
+};
+
+/** Discord's tab label, with "Autocollants" and other long translations of Sticker shortened. */
+function discordLabel(item: any): ReactNode {
+    const label = item?.label ?? item?.title ?? item?.id;
+    return typeof label === "string" && /sticker|autocollant/i.test(`${item?.id} ${label}`) ? "Sticker" : label;
+}
+
+interface TabBarProps {
+    state: any;
+    items: any[];
+    kinds: MediaKind[];
+    active: MediaKind | null;
+    select(kind: MediaKind | null): void;
+}
+
+/** Discord's tabs followed by MediaVault's, evenly spread when they fit, scrolling when they do not. */
+function TabBar({ state, items, kinds, active, select }: TabBarProps) {
+    const { Text } = Design;
+    const [discordIndex, setDiscordIndex] = useState(() => readShared(state?.activeIndex) ?? 0);
+    // A swipe between Discord's pages moves its active index without telling anyone: it is read regularly.
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const index = readShared(state?.activeIndex);
+            if (typeof index === "number") setDiscordIndex(index);
+        }, 200);
+        return () => clearInterval(timer);
+    }, [state]);
+    const scroll = useRef<any>(null);
+    const layouts = useRef<Record<string, { x: number; }>>({});
+
+    const showDiscordTab = (index: number) => {
+        setDiscordIndex(index);
+        const move = () => {
+            try {
+                state?.setActiveIndex?.(index);
+            } catch {}
+        };
+        if (!active) return move();
+        // Discord's pages come back once MediaVault's grid is gone.
+        select(null);
+        setTimeout(move, 50);
+    };
+    const tabs = [
+        ...items.map((item, index) => ({ key: `discord-${index}`, label: discordLabel(item), selected: !active && discordIndex === index, onPress: () => showDiscordTab(index) })),
+        ...kinds.map(kind => ({ key: kind, label: t(`tab.${kind}` as Key) as ReactNode, selected: active === kind, onPress: () => select(kind) }))
+    ];
+    const selectedKey = tabs.find(tab => tab.selected)?.key;
+    useEffect(() => {
+        const layout = selectedKey ? layouts.current[selectedKey] : undefined;
+        if (layout) scroll.current?.scrollTo?.({ x: Math.max(0, layout.x - 48), animated: true });
+    }, [selectedKey]);
+
+    return <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.bar} contentContainerStyle={styles.barContent}>
+        {tabs.map(tab => <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected: tab.selected }} onPress={tab.onPress}
+            onLayout={(event: any) => { layouts.current[tab.key] = event.nativeEvent.layout; }}
+            style={[styles.barTab, tab.selected && styles.barTabActive]}>
+            {typeof tab.label === "string"
+                ? <Text variant="text-sm/semibold" color={tab.selected ? "text-strong" : "text-muted"} numberOfLines={1}>{tab.label}</Text>
+                : tab.label}
+        </Pressable>)}
+    </ScrollView>;
 }
 
 function FallbackTabs({ kinds, active, select }: { kinds: MediaKind[]; active: MediaKind | null; select(kind: MediaKind | null): void; }) {
@@ -323,6 +347,10 @@ function closePicker() {
 
 const styles = StyleSheet.create({
     content: { flex: 1 },
+    bar: { flexGrow: 0 },
+    barContent: { flexGrow: 1, gap: 2, paddingHorizontal: 8, paddingVertical: 4 },
+    barTab: { flexGrow: 1, alignItems: "center", paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
+    barTabActive: { backgroundColor: "rgba(128,128,128,0.22)" },
     backLink: { paddingHorizontal: 12, paddingVertical: 8 },
     tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 16, paddingVertical: 6 },
     tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: "rgba(128,128,128,0.14)" },

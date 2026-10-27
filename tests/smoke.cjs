@@ -32,7 +32,7 @@ const androidToasts = [];
 const fakeReact = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.length > 1 ? children : children[0] } }),
     cloneElement: (element, props, ...children) => ({ ...element, props: { ...element.props, ...props, children } }),
-    useState: initial => [initial, value => stateCalls.push(value)],
+    useState: initial => [typeof initial === "function" ? initial() : initial, value => stateCalls.push(value)],
     Component: class {},
     useRef: initial => ({ current: initial }),
     useEffect: () => {},
@@ -108,21 +108,26 @@ assert.ok(patches.some(p => p.kind === "before" && p.name === "openLazy"), "acti
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(other.default().props.children.length, 0, "other sheets untouched");
 
-    // The GIF/emoji picker gets MediaVault's tabs in its segmented control.
+    // The GIF/emoji picker's segmented control gives way to MediaVault's tab bar.
     const discordPages = [];
     let pickerState;
+    function SegmentedControl() {}
     function ExpressionPicker() {
-        pickerState = segmentedReexport.useSegmentedControlState({ items: [{ id: "emoji" }, { id: "gif" }, { id: "sticker" }], onPageChange: index => discordPages.push(index) });
-        return { type: "View", props: { children: [{ type: "View", props: { children: [] } }, { type: "View", props: { children: [] } }] } };
+        pickerState = segmentedReexport.useSegmentedControlState({ items: [{ id: "emoji", label: "Émoji" }, { id: "gif", label: "GIF" }, { id: "sticker", label: "Autocollants" }], onPageChange: index => discordPages.push(index) });
+        return { type: "View", props: { children: [{ type: "View", props: { children: { type: SegmentedControl, props: { state: pickerState } } } }, { type: "View", props: { children: [] } }] } };
     }
     const element = jsxRuntime.jsx(ExpressionPicker, { channel: {} });
     assert.notEqual(element.type, ExpressionPicker, "picker wrapped");
-    element.type(element.props);
-    assert.equal(pickerState.items.length, 5, "Images and Videos tabs added (Audio and Files are off by default)");
-    assert.equal(pickerState.items[2].label, "Sticker", "Sticker label shortened");
-    pickerState.setActiveIndex(1);
+    const rendered = element.type(element.props);
+    const bar = [rendered.props.children].flat()[0].props.children[0];
+    assert.equal(bar?.props?.state, pickerState, "segmented control replaced by the tab bar");
+    assert.notEqual(bar.type, SegmentedControl);
+    const barTabs = bar.type(bar.props).props.children;
+    assert.equal(barTabs.length, 5, "Discord's tabs, then Images and Videos (Audio and Files are off by default)");
+    assert.equal(barTabs[2].props.children.props.children, "Sticker", "Sticker label shortened");
+    barTabs[1].props.onPress();
     assert.deepEqual(discordPages, [1], "Discord tabs still work");
-    pickerState.setActiveIndex(3);
+    barTabs[3].props.onPress();
     assert.deepEqual(discordPages, [1], "MediaVault tab not passed to Discord");
     assert.ok(stateCalls.includes("image"), "MediaVault tab selected");
     assert.equal(jsxRuntime.jsx("View", {}).type, "View", "other elements untouched");
