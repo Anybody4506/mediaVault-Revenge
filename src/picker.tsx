@@ -13,6 +13,7 @@ import type { Key } from "./i18n";
 import { t } from "./i18n";
 import { KINDS, LibraryBrowser } from "./library";
 import type { MediaKind } from "./model";
+import { describe } from "./describe";
 import { Design, findByProps, findInReactTree, patcher } from "./rv";
 import { settings, TAB_SETTINGS, useSettings } from "./settings";
 
@@ -26,7 +27,7 @@ import { settings, TAB_SETTINGS, useSettings } from "./settings";
  */
 
 /** Shown in the diagnostic. */
-export const pickerStatus = { wrapped: 0, segmentedHook: false, injected: false, segmentedOptions: [] as string[], contentFound: false, error: "" };
+export const pickerStatus = { wrapped: 0, segmentedHook: false, injected: false, segmentedOptions: [] as string[], contentFound: false, error: "", hookCalls: [] as unknown[], segmentedState: null as unknown };
 
 interface Injection {
     kinds: MediaKind[];
@@ -85,6 +86,7 @@ export function patchExpressionPicker(): () => void {
         unpatches.push(patcher.instead("useSegmentedControlState", segmented, (args, hook) => {
             const injection = rendering;
             const [options] = args as [any];
+            if (injection && pickerStatus.hookCalls.length < 4) pickerStatus.hookCalls.push(describe(args));
             if (!injection || !Array.isArray(options?.items) || !injection.kinds.length) return hook(...args);
             rendering = null; // Only the picker's own segmented control.
             pickerStatus.segmentedOptions = Object.keys(options);
@@ -134,6 +136,10 @@ function decorate(tree: ReactElement, kinds: MediaKind[], kind: MediaKind | null
     const holds = (node: any, pattern: RegExp) => !!findInReactTree(node, candidate => pattern.test(candidate?.type?.name ?? candidate?.type?.displayName ?? candidate?.type?.type?.name ?? ""));
     let contentIndex = children.findIndex(child => child && holds(child, /Picker|Gif|GIF|Sticker|Soundboard/) && !holds(child, /SegmentedControl/));
     pickerStatus.contentFound = contentIndex !== -1;
+    if (!pickerStatus.segmentedState) {
+        const control = findInReactTree(tree, candidate => candidate?.props?.state && /Segmented/.test(candidate?.type?.name ?? candidate?.type?.displayName ?? ""));
+        if (control) pickerStatus.segmentedState = { type: control.type?.name ?? control.type?.displayName, props: Object.keys(control.props), state: describe(control.props.state) };
+    }
     if (contentIndex === -1) contentIndex = children.length - 1;
 
     const next = [...children];

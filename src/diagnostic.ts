@@ -4,6 +4,7 @@
  */
 
 import { chatButtonHost, chatButtonStatus } from "./chatButton";
+import { describe } from "./describe";
 import { pickerStatus } from "./picker";
 import { findByProps, patcher } from "./rv";
 
@@ -34,19 +35,6 @@ export function recordActionSheets(): () => void {
 const PORTAL_FUNCTIONS = ["openPortalKeyboard", "handlePortalKeyboardOpen", "registerPortalKeyboardRenderer", "setKeyboardType", "closePortalKeyboard"];
 const portalCalls: string[] = [];
 
-function describe(value: any, depth = 0): unknown {
-    if (value === null || ["string", "number", "boolean", "undefined"].includes(typeof value)) return value;
-    if (typeof value === "function") return `fn ${value.displayName ?? value.name ?? "?"}/${value.length}`;
-    if (Array.isArray(value)) return depth > 1 ? `array(${value.length})` : value.slice(0, 6).map(item => describe(item, depth + 1));
-    if (typeof value === "object") {
-        if (depth > 1) return `{${Object.keys(value).slice(0, 12).join(",")}}`;
-        if (value.$$typeof) return `element ${value.type?.displayName ?? value.type?.name ?? value.type}`;
-        const out: Record<string, unknown> = {};
-        for (const key of Object.keys(value).slice(0, 20)) out[key] = describe(value[key], depth + 1);
-        return out;
-    }
-    return typeof value;
-}
 
 export function recordPortalKeyboard(): () => void {
     const unpatches: (() => void)[] = [];
@@ -145,6 +133,21 @@ function namesOf(exports: any): string[] {
     return names;
 }
 
+/** Modules that export something about segmented controls, to find the hook that builds the picker's tabs. */
+function segmentedModules() {
+    const found: string[] = [];
+    try {
+        vendetta.metro.findAll((exports: any) => {
+            if (found.length < 30 && exports && typeof exports === "object") {
+                const keys = Object.keys(exports).filter(key => /Segmented/i.test(key));
+                if (keys.length) found.push(`${keys.join(",")} [${Object.keys(exports).slice(0, 8).join(",")}]`);
+            }
+            return false;
+        });
+    } catch {}
+    return found;
+}
+
 export function collectDiagnostic(): string {
     if (!pickerTree.length) capturePicker();
     const names = new Set<string>();
@@ -163,7 +166,7 @@ export function collectDiagnostic(): string {
     return JSON.stringify({
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
-        picker: pickerStatus,
+        picker: { ...pickerStatus, segmentedModules: segmentedModules() },
         actionSheets: sheetKeys,
         portalCalls,
         pickerTree,
