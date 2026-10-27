@@ -6,6 +6,7 @@
 import { chatButtonHost, chatButtonStatus } from "./chatButton";
 import { describe } from "./describe";
 import { pickerStatus } from "./picker";
+import { thumbnailFailures } from "./thumbs";
 import { findByProps, patcher, VideoPlayer, videoViews } from "./rv";
 
 /**
@@ -148,6 +149,29 @@ function segmentedModules() {
     return found;
 }
 
+/** Modules and native views about video, to find the player Discord uses for videos in the chat. */
+function videoModules() {
+    const modules: string[] = [];
+    try {
+        vendetta.metro.findAll((exports: any) => {
+            if (modules.length < 40 && exports && (typeof exports === "object" || typeof exports === "function")) {
+                const own = typeof exports === "function" ? [exports.displayName ?? exports.name ?? ""] : Object.keys(exports);
+                const keys = own.filter(key => /video|player/i.test(key) && !/Icon$/.test(key));
+                const component = typeof exports?.default === "function" ? exports.default.displayName ?? exports.default.name ?? "" : "";
+                if (/video|player/i.test(component) && !/Icon$/.test(component)) keys.push(`default:${component}`);
+                if (keys.length) modules.push(`${keys.slice(0, 6).join(",")} [${own.slice(0, 6).join(",")}]`);
+            }
+            return false;
+        });
+    } catch {}
+    let views: string[] = [];
+    try {
+        const { UIManager } = vendetta.metro.common.ReactNative as any;
+        views = Object.keys(UIManager?.getConstants?.() ?? UIManager ?? {}).filter(name => /video|player|media/i.test(name));
+    } catch {}
+    return { modules, nativeViews: views };
+}
+
 let stopRecording: (() => void) | null = null;
 
 /** Starts or stops recording what "Copy diagnostic" reports (it patches Discord, so it is off unless asked for). */
@@ -180,7 +204,8 @@ export function collectDiagnostic(): string {
         plugin: "MediaVault",
         chatButton: chatButtonStatus,
         picker: { ...pickerStatus, segmentedModules: segmentedModules() },
-        video: { views: videoViews(), player: describe(VideoPlayer()) },
+        video: { views: videoViews(), player: describe(VideoPlayer()), ...videoModules() },
+        thumbnailFailures,
         actionSheets: sheetKeys,
         portalCalls,
         pickerTree,

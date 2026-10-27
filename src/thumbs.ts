@@ -6,7 +6,14 @@
 import type { SavedMedia } from "./model";
 import { isVideoUrl } from "./model";
 
-const DISCORD_CDN_HOSTS = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
+/** Thumbnails that failed to load (the media's link, then each link tried), shown in the diagnostic. */
+export const thumbnailFailures: string[] = [];
+
+export function recordThumbnailFailure(url: string | undefined, tried: string) {
+    if (thumbnailFailures.length < 15 && !thumbnailFailures.some(entry => entry.endsWith(tried))) thumbnailFailures.push(`${url} -> ${tried}`);
+}
+
+const DISCORD_CDN_HOSTS =new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 
 /**
  * A light version of a media for the grid. React Native's Image cannot play videos, which the desktop plugin shows

@@ -18,7 +18,7 @@ import { openFolderOptions, openMediaOptions, promptCreateFolder } from "./optio
 import { TAB_SETTINGS, useSettings } from "./settings";
 import { useLibrary } from "./store";
 import { Design, SheetFlatList, useSafeAreaInsets, VideoPlayer } from "./rv";
-import { previewOf, thumbnailSource } from "./thumbs";
+import { previewOf, recordThumbnailFailure, thumbnailSource } from "./thumbs";
 import { EmptyText, hideSheet, icon, openSheet, RenderBoundary } from "./ui";
 import { useFreshUrl } from "./urls";
 
@@ -221,11 +221,15 @@ function Thumbnail({ url, size, height = size, fallbackIcon }: { url: string | u
     useEffect(() => setFailures(0), [light]);
     const original = fresh && !isVideoUrl(fresh) && fresh !== light ? fresh : null;
     const source = failures === 0 ? light : failures === 1 ? original : null;
+    if (!light && fresh) recordThumbnailFailure(url, `no thumbnail for ${fresh}`);
     if (!source) {
         const Icon = icon(...fallbackIcon);
         return <View style={{ width: size, height, alignItems: "center", justifyContent: "center" }}>{Icon && <Icon size="md" />}</View>;
     }
-    return <Image source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => setFailures(failures + (failures === 0 && !original ? 2 : 1))} />;
+    return <Image source={{ uri: source }} style={{ width: size, height }} resizeMode="cover" onError={() => {
+        recordThumbnailFailure(url, source);
+        setFailures(failures + (failures === 0 && !original ? 2 : 1));
+    }} />;
 }
 
 export const KIND_ICONS: Record<MediaKind, string[]> = {
