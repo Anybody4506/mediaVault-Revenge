@@ -29,7 +29,7 @@ import { PICKER_TAB_SETTINGS, settings, useSettings } from "./settings";
  */
 
 /** Shown in the diagnostic. */
-export const pickerStatus = { wrapped: 0, segmentedHook: false, injected: false, segmentedOptions: [] as string[], contentFound: false, contentNames: [] as string[], tabs: [] as string[], error: "", hookCalls: [] as unknown[], segmentedState: null as unknown };
+export const pickerStatus = { factories: [] as string[], wrapped: 0, segmentedHook: false, injected: false, segmentedOptions: [] as string[], contentFound: false, contentNames: [] as string[], tabs: [] as string[], error: "", hookCalls: [] as unknown[], segmentedState: null as unknown };
 
 interface Injection {
     /** The picker's segmented control: its state (active page, `setActiveIndex`) and Discord's tabs. */
@@ -69,7 +69,12 @@ export function showInPicker(kind: MediaKind, openExpressionPicker: (() => void)
 /** Set while the wrapper renders the original picker, so the segmented control hook knows it is the picker's. */
 let rendering: Injection | null = null;
 
-const isExpressionPicker = (type: any) => type?.name === "ExpressionPicker" || type?.type?.name === "ExpressionPicker";
+const isExpressionPicker = (type: any) => type?.name === "ExpressionPicker" || type?.type?.name === "ExpressionPicker" || type?.render?.name === "ExpressionPicker";
+
+/** The picker's render function, whether it is a plain component, a memo or a forwardRef. */
+const renderOf = (type: any): ((props: any) => ReactNode) => typeof type === "function" ? type
+    : typeof type?.type === "function" ? type.type
+        : (props: any) => type.render(props, null);
 
 export function patchExpressionPicker(): () => void {
     const unpatches: (() => void)[] = [];
@@ -117,20 +122,35 @@ export function patchExpressionPicker(): () => void {
         }
     }
 
-    const runtime = findByProps("jsx", "jsxs");
-    if (!runtime) throw new Error("React's jsx runtime was not found.");
-    // forEach rather than for...of: each hook needs its own `name` once the bundle is minified.
-    ["jsx", "jsxs"].forEach(name => {
-        if (typeof runtime[name] !== "function") return;
-        unpatches.push(patcher.before(name, runtime, args => {
-            const [type] = args;
-            if (typeof type !== "function" && typeof type !== "object") return;
-            if (!isExpressionPicker(type) || !settings().pickerTabs) return;
-            original ??= typeof type === "function" ? type : type.type;
-            pickerStatus.wrapped++;
-            return [MediaVaultExpressionPicker, ...args.slice(1)];
-        }));
+    // Discord may create the picker's element with any copy of the jsx runtime (several ship in the app, and an
+    // update can move the picker to another), or with React.createElement: every one of them is patched.
+    const metro = vendetta.metro;
+    const factories = new Set<any>([
+        ...(metro.findByPropsAll?.("jsx", "jsxs") ?? []),
+        ...(metro.findByPropsAll?.("jsxDEV") ?? []),
+        findByProps("jsx", "jsxs"),
+        metro.common.React
+    ].filter(Boolean));
+    factories.forEach(factory => {
+        // forEach rather than for...of: each hook needs its own `name` once the bundle is minified.
+        ["jsx", "jsxs", "jsxDEV", "createElement"].forEach(name => {
+            if (typeof factory[name] !== "function") return;
+            try {
+                unpatches.push(patcher.before(name, factory, args => {
+                    const [type] = args;
+                    if (typeof type !== "function" && typeof type !== "object") return;
+                    if (!isExpressionPicker(type) || !settings().pickerTabs) return;
+                    original ??= renderOf(type);
+                    pickerStatus.wrapped++;
+                    return [MediaVaultExpressionPicker, ...args.slice(1)];
+                }));
+                pickerStatus.factories.push(name);
+            } catch {
+                // Read-only exports cannot be patched; another copy covers them.
+            }
+        });
     });
+    if (!pickerStatus.factories.length) throw new Error("React's jsx runtime was not found.");
 
     // Discord has several copies of the hook (the original module and modules re-exporting it), and the picker
     // does not use the first one found: every copy is patched. Nested copies see `rendering` cleared and pass through.
