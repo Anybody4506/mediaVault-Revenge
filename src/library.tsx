@@ -5,7 +5,7 @@
 
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Image, Pressable, StyleSheet, View } from "react-native";
+import { FlatList, Image, Pressable, StyleSheet, Text as NativeText, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 
 import { chooseMedia, withoutRecentlyRemoved } from "./actions";
@@ -273,7 +273,7 @@ function MediaTile({ item, size, visual, onPress, onLongPress }: { item: SavedMe
 
 /** Black or white, whichever reads better on a folder color. */
 function readableOn(color: string) {
-    const hex = /^#?([da-f]{6})$/i.exec(color)?.[1];
+    const hex = /^#?([\da-f]{6})$/i.exec(color)?.[1];
     if (!hex) return "#ffffff";
     const [r, g, b] = [0, 2, 4].map(at => parseInt(hex.slice(at, at + 2), 16) / 255);
     return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 ? "#000000" : "#ffffff";
@@ -283,15 +283,17 @@ function readableOn(color: string) {
 export function FolderTile({ folder, items, width, height, visual, hideThumbnail, onPress, onLongPress }: {
     folder: MediaCategory; items: SavedMedia[]; width: number; height: number; visual: boolean; hideThumbnail: boolean; onPress(): void; onLongPress(): void;
 }) {
-    const { Text } = Design;
     const color = folder.color ?? "#202225";
     const first = items.find(item => item.categoryId === folder.id);
     const thumbnail = hideThumbnail || !visual ? undefined : folder.thumbnail ?? (first && previewOf(first));
+    // React Native's own Text with a fixed size: Discord's Text adds its own line height and font padding, and the
+    // Android text shadow smears, which made names overflow or look blurry on the small tiles.
     return <Pressable accessibilityRole="button" accessibilityLabel={t("folder.openAria", { name: folder.name })} onPress={onPress} onLongPress={onLongPress}
         style={[styles.folder, { width, height, backgroundColor: color }]}>
         {thumbnail && <View style={StyleSheet.absoluteFill}><Thumbnail url={thumbnail} page={folder.thumbnail ? undefined : first?.url} size={width} height={height} fallbackIcon={["FolderIcon"]} /></View>}
         {thumbnail && <View style={[StyleSheet.absoluteFill, styles.folderFade]} />}
-        <Text variant="text-md/bold" lineClamp={2} style={[styles.folderName, { color: thumbnail ? "#ffffff" : readableOn(color) }, !thumbnail && styles.noShadow]}>{folder.name}</Text>
+        <NativeText numberOfLines={2} ellipsizeMode="tail" allowFontScaling={false}
+            style={[styles.folderName, { color: thumbnail ? "#ffffff" : readableOn(color) }]}>{folder.name}</NativeText>
     </Pressable>;
 }
 
@@ -309,7 +311,6 @@ const styles = StyleSheet.create({
     row: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, minHeight: 48 },
     folder: { borderRadius: 8, overflow: "hidden", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
     folderFade: { backgroundColor: "rgba(0,0,0,0.45)" },
-    folderName: { textAlign: "center", textShadowColor: "rgba(0,0,0,0.8)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
-    noShadow: { textShadowRadius: 0 },
+    folderName: { width: "100%", textAlign: "center", fontSize: 14, lineHeight: 18, fontWeight: "700", includeFontPadding: false, textAlignVertical: "center" },
     pager: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }
 });
